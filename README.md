@@ -326,6 +326,6 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
 
 <div align="center">
 
-**Built by [Analytic Endeavors](https://github.com/analyticendeavors)**
+**Built by [Analytic Endeavors](https://analyticendeavors.com)**
 
 </div>
