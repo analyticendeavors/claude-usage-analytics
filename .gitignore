@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output (keep out/ for distribution)
+# out/
+
+# Package files
+*.vsix
+
+# Editor settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Lock files (regenerate with npm install)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Logs
+*.log
+npm-debug.log*
