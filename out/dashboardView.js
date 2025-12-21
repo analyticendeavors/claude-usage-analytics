@@ -350,27 +350,27 @@ class DashboardViewProvider {
                 <div class="info-list">
                     <div class="info-row">
                         <span>✨ Features</span>
-                        <span class="info-value">${cs.requestTypes.features}</span>
+                        <span class="info-value">${this.formatNumber(cs.requestTypes.features)}</span>
                     </div>
                     <div class="info-row">
                         <span>🔧 Debug</span>
-                        <span class="info-value">${cs.requestTypes.debugging}</span>
+                        <span class="info-value">${this.formatNumber(cs.requestTypes.debugging)}</span>
                     </div>
                     <div class="info-row">
                         <span>📖 Explain</span>
-                        <span class="info-value">${cs.requestTypes.explain}</span>
+                        <span class="info-value">${this.formatNumber(cs.requestTypes.explain)}</span>
                     </div>
                     <div class="info-row">
                         <span>👀 Review</span>
-                        <span class="info-value">${cs.requestTypes.review}</span>
+                        <span class="info-value">${this.formatNumber(cs.requestTypes.review)}</span>
                     </div>
                     <div class="info-row">
                         <span>🔄 Refactor</span>
-                        <span class="info-value">${cs.requestTypes.refactor}</span>
+                        <span class="info-value">${this.formatNumber(cs.requestTypes.refactor)}</span>
                     </div>
                     <div class="info-row">
                         <span>🧪 Testing</span>
-                        <span class="info-value">${cs.requestTypes.testing}</span>
+                        <span class="info-value">${this.formatNumber(cs.requestTypes.testing)}</span>
                     </div>
                 </div>
             </div>
@@ -400,27 +400,42 @@ class DashboardViewProvider {
             <!-- Personality Profile -->
             <div class="section">
                 <div class="section-title">🧠 Personality Profile</div>
-                <div class="info-list">
-                    <div class="info-row">
-                        <span>🎩 Politeness</span>
-                        <div class="mini-bar">
-                            <div class="mini-bar-fill" style="width: ${fs.politenessScore}%; background: #2ed573"></div>
+                <div class="personality-grid">
+                    <div class="personality-item">
+                        <div class="personality-icon">🎩</div>
+                        <div class="personality-content">
+                            <div class="personality-header">
+                                <span class="personality-label">Politeness</span>
+                                <span class="personality-detail">${this.formatNumber(cs.pleaseCount + cs.thanksCount)} phrases</span>
+                            </div>
+                            <div class="personality-bar">
+                                <div class="personality-fill" style="width: ${Math.min(100, fs.politenessScore * 10)}%; background: #2ed573"></div>
+                            </div>
                         </div>
-                        <span class="info-value">${fs.politenessScore}%</span>
                     </div>
-                    <div class="info-row">
-                        <span>😤 Frustration</span>
-                        <div class="mini-bar">
-                            <div class="mini-bar-fill" style="width: ${fs.frustrationIndex}%; background: #ff4757"></div>
+                    <div class="personality-item">
+                        <div class="personality-icon">😤</div>
+                        <div class="personality-content">
+                            <div class="personality-header">
+                                <span class="personality-label">Frustration</span>
+                                <span class="personality-detail">${fs.frustrationIndex < 1 ? 'Very calm' : fs.frustrationIndex < 3 ? 'Mostly calm' : fs.frustrationIndex < 5 ? 'Moderate' : 'Frustrated'}</span>
+                            </div>
+                            <div class="personality-bar">
+                                <div class="personality-fill" style="width: ${Math.min(100, fs.frustrationIndex * 20)}%; background: #ff4757"></div>
+                            </div>
                         </div>
-                        <span class="info-value">${fs.frustrationIndex}%</span>
                     </div>
-                    <div class="info-row">
-                        <span>🤔 Curiosity</span>
-                        <div class="mini-bar">
-                            <div class="mini-bar-fill" style="width: ${fs.curiosityScore}%; background: #3498db"></div>
+                    <div class="personality-item">
+                        <div class="personality-icon">🤔</div>
+                        <div class="personality-content">
+                            <div class="personality-header">
+                                <span class="personality-label">Curiosity</span>
+                                <span class="personality-detail">${this.formatNumber(cs.questionsAsked)} questions</span>
+                            </div>
+                            <div class="personality-bar">
+                                <div class="personality-fill" style="width: ${Math.min(100, fs.curiosityScore * 10)}%; background: #f39c12"></div>
+                            </div>
                         </div>
-                        <span class="info-value">${fs.curiosityScore}%</span>
                     </div>
                 </div>
             </div>
@@ -430,19 +445,19 @@ class DashboardViewProvider {
                 <div class="section-title">💬 Expression</div>
                 <div class="stat-grid">
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.curseWords}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.curseWords)}</div>
                         <div class="stat-mini-label">🤬 Curses</div>
                     </div>
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.questionsAsked}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.questionsAsked)}</div>
                         <div class="stat-mini-label">❓ Questions</div>
                     </div>
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.pleaseCount}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.pleaseCount)}</div>
                         <div class="stat-mini-label">🙏 Please</div>
                     </div>
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.thanksCount}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.thanksCount)}</div>
                         <div class="stat-mini-label">💕 Thanks</div>
                     </div>
                 </div>
@@ -462,19 +477,19 @@ class DashboardViewProvider {
                 </div>
                 <div class="stat-grid" style="margin-top: 8px">
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.sentiment.confused}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.sentiment.confused)}</div>
                         <div class="stat-mini-label">😵 Confused</div>
                     </div>
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.sentiment.urgent}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.sentiment.urgent)}</div>
                         <div class="stat-mini-label">🚨 Urgent</div>
                     </div>
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.capsLockMessages}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.capsLockMessages)}</div>
                         <div class="stat-mini-label">😱 CAPS</div>
                     </div>
                     <div class="stat-mini">
-                        <div class="stat-mini-value">${cs.celebrationMoments}</div>
+                        <div class="stat-mini-value">${this.formatNumber(cs.celebrationMoments)}</div>
                         <div class="stat-mini-label">🎉 Celebrate</div>
                     </div>
                 </div>
@@ -752,6 +767,54 @@ class DashboardViewProvider {
 
         /* Chart */
         .chart-container { margin: 8px 0; }
+
+        /* Personality Cards - Compact */
+        .personality-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .personality-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--vscode-sideBar-background);
+            border-radius: 4px;
+            padding: 6px 8px;
+        }
+        .personality-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .personality-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .personality-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3px;
+        }
+        .personality-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+        .personality-detail {
+            font-size: 9px;
+            color: var(--vscode-descriptionForeground);
+        }
+        .personality-bar {
+            height: 4px;
+            background: var(--vscode-progressBar-background);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .personality-fill {
+            height: 100%;
+            border-radius: 2px;
+        }
 
         /* Buttons */
         .btn {

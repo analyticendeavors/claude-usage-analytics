@@ -749,38 +749,54 @@ export function getUsageData(): UsageData {
                     const totalAllTokens = defaultData.allTime.tokens + defaultData.allTime.cacheTokens;
                     const blendedRate = totalAllTokens > 0 ? (totalCost / (totalAllTokens / 1000000)) : 20;
 
-                    // Now calculate daily costs using the actual blended rate
-                    const dailyData = (defaultData as any)._dailyData as any[] | undefined;
-                    if (dailyData && dailyData.length > 0) {
-                        let highestCost = 0;
-                        for (const day of dailyData) {
-                            const dayTokens = day.totalTokens || 0;
-                            const dayCost = (dayTokens / 1000000) * blendedRate;
-                            if (dayCost > highestCost) {
-                                highestCost = dayCost;
+                    // Now calculate daily costs using dailyModelTokens for accuracy
+                    const dailyModelTokens = statsCache.dailyModelTokens as any[] | undefined;
+                    const dailyActivity = (defaultData as any)._dailyData as any[] | undefined;
+
+                    // Build a map of date -> tokens from dailyModelTokens
+                    const tokensByDate: { [date: string]: number } = {};
+                    if (dailyModelTokens && dailyModelTokens.length > 0) {
+                        for (const day of dailyModelTokens) {
+                            if (day.date && day.tokensByModel) {
+                                const dayTotal = Object.values(day.tokensByModel)
+                                    .reduce((sum: number, t: any) => sum + (t || 0), 0);
+                                tokensByDate[day.date] = dayTotal;
                             }
                         }
-                        defaultData.funStats.highestDayCost = highestCost;
+                    }
 
-                        // Yesterday's cost
-                        const yesterday = new Date();
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        const yesterdayStr = yesterday.toISOString().split('T')[0];
-                        const yesterdayData = dailyData.find((d: any) => d.date === yesterdayStr);
-                        if (yesterdayData) {
-                            const yTokens = yesterdayData.totalTokens || 0;
-                            defaultData.funStats.yesterdayCost = (yTokens / 1000000) * blendedRate;
+                    // Calculate highest day and yesterday's cost
+                    let highestCost = 0;
+                    for (const [, tokens] of Object.entries(tokensByDate)) {
+                        const dayCost = (tokens / 1000000) * blendedRate;
+                        if (dayCost > highestCost) {
+                            highestCost = dayCost;
                         }
+                    }
+                    defaultData.funStats.highestDayCost = highestCost;
 
-                        // 7-day cost trend
-                        const last7 = dailyData.slice(-7);
-                        const first7 = dailyData.slice(-14, -7);
-                        if (last7.length > 0 && first7.length > 0) {
-                            const last7Cost = last7.reduce((sum: number, d: any) => sum + ((d.totalTokens || 0) / 1000000) * blendedRate, 0);
-                            const first7Cost = first7.reduce((sum: number, d: any) => sum + ((d.totalTokens || 0) / 1000000) * blendedRate, 0);
-                            if (last7Cost > first7Cost * 1.1) {
+                    // Yesterday's cost
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    if (tokensByDate[yesterdayStr]) {
+                        defaultData.funStats.yesterdayCost = (tokensByDate[yesterdayStr] / 1000000) * blendedRate;
+                    }
+
+                    // 7-day cost trend using dailyActivity for date list
+                    if (dailyActivity && dailyActivity.length >= 7) {
+                        const last7Dates = dailyActivity.slice(-7).map((d: any) => d.date);
+                        const prev7Dates = dailyActivity.slice(-14, -7).map((d: any) => d.date);
+
+                        const last7Cost = last7Dates.reduce((sum: number, date: string) =>
+                            sum + ((tokensByDate[date] || 0) / 1000000) * blendedRate, 0);
+                        const prev7Cost = prev7Dates.reduce((sum: number, date: string) =>
+                            sum + ((tokensByDate[date] || 0) / 1000000) * blendedRate, 0);
+
+                        if (prev7Cost > 0) {
+                            if (last7Cost > prev7Cost * 1.1) {
                                 defaultData.funStats.costTrend = 'up';
-                            } else if (last7Cost < first7Cost * 0.9) {
+                            } else if (last7Cost < prev7Cost * 0.9) {
                                 defaultData.funStats.costTrend = 'down';
                             } else {
                                 defaultData.funStats.costTrend = 'stable';

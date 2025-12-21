@@ -37,66 +37,87 @@ export interface LimitsData {
 }
 
 /**
- * Get OAuth token from Windows Credential Manager
- * Claude Code stores credentials under various service names
+ * Get OAuth token from Claude Code's credentials
+ * Tries multiple methods: file-based, then keytar
  */
 async function getOAuthToken(): Promise<string | null> {
     try {
-        log('Attempting to get OAuth token from keychain...');
+        log('Attempting to get OAuth token...');
 
-        // Try to dynamically require keytar
-        let keytar;
-        try {
-            keytar = require('keytar');
-            log('keytar module loaded successfully');
-        } catch (e) {
-            log(`Failed to load keytar: ${e}`);
-            return null;
-        }
+        // Method 1: Check for credentials file in ~/.claude/
+        const homeDir = require('os').homedir();
+        const path = require('path');
+        const fs = require('fs');
 
-        // Try different service names Claude Code might use
-        const serviceNames = [
-            'Claude Code-credentials',
-            'claude-code',
-            'Claude Code',
-            'anthropic-claude',
-            'claude'
+        const credentialsPaths = [
+            path.join(homeDir, '.claude', 'credentials.json'),
+            path.join(homeDir, '.claude', 'auth.json'),
+            path.join(homeDir, '.claude', '.credentials'),
+            path.join(homeDir, '.config', 'claude', 'credentials.json'),
         ];
 
-        for (const serviceName of serviceNames) {
-            log(`Checking service: ${serviceName}`);
+        for (const credPath of credentialsPaths) {
             try {
-                const credentials = await keytar.findCredentials(serviceName);
-                if (credentials && credentials.length > 0) {
-                    log(`Found ${credentials.length} credential(s) for ${serviceName}`);
-                    const cred = credentials[0];
-                    log(`Account: ${cred.account}`);
-
-                    try {
-                        // Try to parse as JSON
-                        const parsed = JSON.parse(cred.password);
-                        const token = parsed.access_token || parsed.token || parsed.accessToken;
-                        if (token) {
-                            log('Found token in JSON format');
-                            return token;
-                        }
-                    } catch {
-                        // Not JSON, might be direct token
-                        if (cred.password && cred.password.length > 20) {
-                            log('Using password directly as token');
-                            return cred.password;
-                        }
+                if (fs.existsSync(credPath)) {
+                    log(`Found credentials file: ${credPath}`);
+                    const content = fs.readFileSync(credPath, 'utf8');
+                    const parsed = JSON.parse(content);
+                    const token = parsed.access_token || parsed.token || parsed.accessToken || parsed.oauth_token;
+                    if (token) {
+                        log('Found token in credentials file');
+                        return token;
                     }
                 }
             } catch (e) {
-                log(`Error checking ${serviceName}: ${e}`);
+                log(`Error reading ${credPath}: ${e}`);
             }
         }
 
-        log('No OAuth token found in any service');
+        // Method 2: Try keytar (may not work in all environments)
+        try {
+            const keytar = require('keytar');
+            log('keytar module loaded successfully');
+
+            const serviceNames = [
+                'Claude Code-credentials',
+                'claude-code',
+                'Claude Code',
+                'anthropic-claude',
+                'claude'
+            ];
+
+            for (const serviceName of serviceNames) {
+                try {
+                    const credentials = await keytar.findCredentials(serviceName);
+                    if (credentials && credentials.length > 0) {
+                        log(`Found ${credentials.length} credential(s) for ${serviceName}`);
+                        const cred = credentials[0];
+
+                        try {
+                            const parsed = JSON.parse(cred.password);
+                            const token = parsed.access_token || parsed.token || parsed.accessToken;
+                            if (token) {
+                                log('Found token in keytar JSON');
+                                return token;
+                            }
+                        } catch {
+                            if (cred.password && cred.password.length > 20) {
+                                return cred.password;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Skip this service
+                }
+            }
+        } catch (e) {
+            log(`keytar not available: ${e}`);
+        }
+
+        log('No OAuth token found');
         return null;
     } catch (error) {
-        log(`Failed to access keychain: ${error}`);
+        log(`Failed to get OAuth token: ${error}`);
         return null;
     }
 }

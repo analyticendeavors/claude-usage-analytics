@@ -106,7 +106,61 @@
         "key": "ctrl+alt+r",
         "mac": "cmd+alt+r"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Claude Usage Analytics",
+      "properties": {
+        "claudeUsage.refreshIntervalMinutes": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "How often to auto-refresh usage data (in minutes)"
+        },
+        "claudeUsage.showLifetimeCost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show lifetime cost in status bar"
+        },
+        "claudeUsage.showTodayCost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show today's cost in status bar"
+        },
+        "claudeUsage.showMessages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show message count in status bar"
+        },
+        "claudeUsage.showTokens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show token count in status bar"
+        },
+        "claudeUsage.showPersonality": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show personality indicator in status bar"
+        },
+        "claudeUsage.showActivity": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show activity stats in status bar"
+        },
+        "claudeUsage.showRateLimits": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show rate limits in status bar"
+        },
+        "claudeUsage.conversationCacheHours": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 24,
+          "description": "How long to cache conversation analysis (in hours). Lower = more accurate but slower."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
