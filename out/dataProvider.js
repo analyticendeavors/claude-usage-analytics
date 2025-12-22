@@ -544,18 +544,33 @@ function getUsageData() {
                     defaultData.funStats.peakDay = { date: peakDate, messages: peakMessages };
                     defaultData.allTime.daysActive = dailyData.length;
                     // Calculate streak (consecutive days with activity)
+                    // Sort daily data by date descending to find most recent active day
+                    const sortedDays = [...dailyData]
+                        .filter((d) => d.messageCount > 0)
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                     let streak = 0;
-                    const today = new Date();
-                    for (let i = 0; i < 365; i++) {
-                        const checkDate = new Date(today);
-                        checkDate.setDate(checkDate.getDate() - i);
-                        const dateStr = checkDate.toISOString().split('T')[0];
-                        const hasActivity = dailyData.some((d) => d.date === dateStr && d.messageCount > 0);
-                        if (hasActivity) {
-                            streak++;
-                        }
-                        else if (i > 0) {
-                            break;
+                    if (sortedDays.length > 0) {
+                        // Start from most recent active day
+                        const mostRecentDate = new Date(sortedDays[0].date);
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        mostRecentDate.setHours(0, 0, 0, 0);
+                        // Only count streak if most recent activity was today or yesterday
+                        const daysSinceLastActivity = Math.floor((today.getTime() - mostRecentDate.getTime()) / (1000 * 60 * 60 * 24));
+                        if (daysSinceLastActivity <= 1) {
+                            // Count consecutive days backwards from most recent
+                            for (let i = 0; i < 365; i++) {
+                                const checkDate = new Date(mostRecentDate);
+                                checkDate.setDate(checkDate.getDate() - i);
+                                const dateStr = checkDate.toISOString().split('T')[0];
+                                const hasActivity = dailyData.some((d) => d.date === dateStr && d.messageCount > 0);
+                                if (hasActivity) {
+                                    streak++;
+                                }
+                                else {
+                                    break;
+                                }
+                            }
                         }
                     }
                     defaultData.funStats.streak = streak;
