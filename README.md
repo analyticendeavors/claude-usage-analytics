@@ -8,6 +8,14 @@
 
 ---
 
+## What is Claude Usage Analytics?
+
+**Claude Usage Analytics** is a VS Code extension that provides real-time insights into your Claude Code usage. Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of [**Analytic Endeavors**](https://analyticendeavors.com/), this tool transforms raw usage data into actionable intelligence—helping you understand costs, monitor usage patterns, and discover insights in your AI-assisted development workflow.
+
+> *Track your Claude Code usage with real-time analytics in VS Code. Monitor costs, tokens, and subscription tier. Explore personality insights, achievement badges, and coding patterns. Features a 4-tab dashboard and 7 status bar widgets showing lifetime costs, daily spending, cache efficiency, and usage trends.*
+
+---
+
 ## Screenshots
 
 ![Status Bar with Tooltip](screenshots/status%20bar%20and%20tooltip.png)
@@ -28,14 +36,6 @@
 ![Personality Report](screenshots/personality%20report.png)
 
 </details>
-
----
-
-## What is Claude Usage Analytics?
-
-**Claude Usage Analytics** is a VS Code extension that provides real-time insights into your Claude Code usage. Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of [**Analytic Endeavors**](https://analyticendeavors.com/), this tool transforms raw usage data into actionable intelligence—helping you understand costs, monitor usage patterns, and discover insights in your AI-assisted development workflow.
-
-> *Track your Claude Code usage with real-time analytics in VS Code. Monitor costs, tokens, and subscription tier. Explore personality insights, achievement badges, and coding patterns. Features a 4-tab dashboard and 7 status bar widgets showing lifetime costs, daily spending, cache efficiency, and usage trends.*
 
 ---
 
