@@ -1,6 +1,6 @@
 # Claude Usage Analytics
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.2-blue)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.95%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
@@ -131,12 +131,12 @@ This extension prioritizes your privacy:
 
 ## Installation
 
-### Option 1: From VSIX Package (Recommended)
+### Option 1: From VS Code Marketplace (Recommended)
 
-Download the latest `.vsix` from [Releases](https://github.com/analyticendeavors/claude-usage-analytics/releases), then:
+Search for **"Claude Usage Analytics"** in the VS Code Extensions panel, or install via command line:
 
 ```bash
-code --install-extension claude-usage-analytics-1.0.1.vsix
+code --install-extension analyticendeavors.claude-usage-analytics
 ```
 
 ### Option 2: From Source
@@ -156,7 +156,7 @@ npm run compile
 npx vsce package
 
 # Install the generated .vsix
-code --install-extension claude-usage-analytics-1.0.1.vsix
+code --install-extension claude-usage-analytics-1.0.2.vsix
 ```
 
 ---
@@ -324,7 +324,7 @@ npx vsce package   # Create .vsix package
 
 ## Changelog
 
-### v1.0.1 (2025-12-21)
+### v1.0.2 (2025-12-21)
 - **Real-time today's cost**: Now reads directly from conversation JSONL files for accurate current-day statistics
 - **Subscription tier display**: Shows Max 20x, Max, Pro, or Free tier instead of rate limit percentages
 - **Fully offline**: Removed all network API calls — extension operates completely locally
