@@ -10,20 +10,24 @@
 
 ## Screenshots
 
-### Status Bar & Tooltip
 ![Status Bar with Tooltip](screenshots/status%20bar%20and%20tooltip.png)
 
-### Dashboard - Overview
+<details>
+<summary><b>View Dashboard Screenshots</b></summary>
+
+### Overview
 ![Overview Report](screenshots/overview%20report.png)
 
-### Dashboard - Cost Analysis
+### Cost Analysis
 ![Cost Report](screenshots/cost%20report.png)
 
-### Dashboard - Messages
+### Messages
 ![Messages Report](screenshots/messages%20report.png)
 
-### Dashboard - Personality
+### Personality
 ![Personality Report](screenshots/personality%20report.png)
+
+</details>
 
 ---
 
