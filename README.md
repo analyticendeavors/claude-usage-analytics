@@ -1,6 +1,6 @@
 # Claude Usage Analytics
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.95%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
@@ -8,11 +8,30 @@
 
 ---
 
+## Screenshots
+
+### Status Bar & Tooltip
+![Status Bar with Tooltip](screenshots/status%20bar%20and%20tooltip.png)
+
+### Dashboard - Overview
+![Overview Report](screenshots/overview%20report.png)
+
+### Dashboard - Cost Analysis
+![Cost Report](screenshots/cost%20report.png)
+
+### Dashboard - Messages
+![Messages Report](screenshots/messages%20report.png)
+
+### Dashboard - Personality
+![Personality Report](screenshots/personality%20report.png)
+
+---
+
 ## What is Claude Usage Analytics?
 
-**Claude Usage Analytics** is a VS Code extension that provides real-time insights into your Claude Code usage. Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of [**Analytic Endeavors**](https://analyticendeavors.com/), this tool transforms raw usage data into actionable intelligence—helping you understand costs, monitor rate limits, and discover patterns in your AI-assisted development workflow.
+**Claude Usage Analytics** is a VS Code extension that provides real-time insights into your Claude Code usage. Built by [Reid Havens](https://www.linkedin.com/in/reidhavens/) of [**Analytic Endeavors**](https://analyticendeavors.com/), this tool transforms raw usage data into actionable intelligence—helping you understand costs, monitor usage patterns, and discover insights in your AI-assisted development workflow.
 
-> *Track your Claude Code usage with real-time analytics in VS Code. Monitor costs, tokens, and rate limits. Explore personality insights, achievement badges, and coding patterns. Features a 4-tab dashboard and 7 status bar widgets showing lifetime costs, daily spending, cache efficiency, and usage trends.*
+> *Track your Claude Code usage with real-time analytics in VS Code. Monitor costs, tokens, and subscription tier. Explore personality insights, achievement badges, and coding patterns. Features a 4-tab dashboard and 7 status bar widgets showing lifetime costs, daily spending, cache efficiency, and usage trends.*
 
 ---
 
@@ -24,19 +43,19 @@ Seven live statistics widgets always visible at a glance:
 | Widget | Icon | Displays | Click Action |
 |--------|------|----------|--------------|
 | **Lifetime Cost** | `$(graph)` | Total all-time spending | Opens Overview tab |
-| **Today's Cost** | `$(calendar)` | Current day usage | Opens Cost tab |
+| **Today's Cost** | `$(calendar)` | Real-time current day usage | Opens Cost tab |
 | **Messages** | `$(comment-discussion)` | Total message count | Opens Messages tab |
 | **Tokens** | `$(symbol-number)` | Token consumption | Opens Messages tab |
 | **Personality** | Emoji | Politeness score % | Opens Personality tab |
 | **Activity** | Chart | Code blocks generated | Opens Personality tab |
-| **Rate Limits** | `$(pulse)` | 5h/7d limit status | Opens Overview tab |
+| **Subscription** | `$(pulse)` | Subscription tier (Max 20x, Pro, etc.) | Opens Overview tab |
 
 ### Interactive Dashboard
 A comprehensive 4-tab analytics panel with deep insights:
 
 | Tab | Content |
 |-----|---------|
-| **Overview** | Hero stats, quick metrics, rate limit progress bars, daily activity visualization, model distribution breakdown |
+| **Overview** | Hero stats, quick metrics, daily activity visualization, model distribution breakdown |
 | **Cost** | Detailed cost analysis, 7-day trends, monthly projections, highest spending days, cache savings calculations |
 | **Messages** | Token breakdown (input/output/cache), peak usage hours, activity patterns, session statistics |
 | **Personality** | Achievement badges, personality trait scores, expression analysis, mood & sentiment tracking |
@@ -49,6 +68,7 @@ A comprehensive 4-tab analytics panel with deep insights:
 *Understand exactly where your tokens go*
 
 - **Real-time cost tracking** with model-specific pricing (Opus vs Sonnet rates)
+- **Real-time today's cost** calculated directly from conversation files
 - **Daily/weekly/monthly breakdowns** with trend analysis
 - **Cost projections** based on your usage patterns
 - **Cache savings calculator** showing money saved through prompt caching
@@ -68,16 +88,12 @@ A comprehensive 4-tab analytics panel with deep insights:
   - Politeness Pro (80%+ politeness)
   - *...and more!*
 
-### Rate Limit Monitoring
-*Never get throttled unexpectedly*
+### Subscription Display
+*Know your current plan at a glance*
 
-- **5-hour rolling window** percentage with reset countdown
-- **7-day rolling window** percentage tracking
-- **Opus-specific limits** when applicable
-- **Color-coded warnings**:
-  - Green: < 70% usage
-  - Yellow: 70-90% usage
-  - Red: > 90% usage
+- **Subscription tier display** — Shows Max 20x, Max, Pro, or Free
+- **Plan information** from Claude Code credentials
+- **Green status indicator** when tier is detected
 
 ### Activity Tracking
 *Analyze your coding patterns*
@@ -98,14 +114,14 @@ This extension prioritizes your privacy:
 | Aspect | Implementation |
 |--------|----------------|
 | **Data Location** | All data stays on your machine |
-| **Network Calls** | Only Anthropic's official API (for rate limits) |
+| **Network Calls** | None — fully offline operation |
 | **Telemetry** | None — zero tracking or analytics |
-| **Token Storage** | Uses OS keychain via `keytar` |
 | **Open Source** | Full source code available for audit |
 
 **Data Sources:**
 - `~/.claude/stats-cache.json` — Token usage and model statistics
-- `~/.claude/projects/*/` — Conversation history for personality analysis
+- `~/.claude/projects/*/` — Conversation history for personality analysis and real-time today's cost
+- `~/.claude/.credentials.json` — Subscription tier information (read-only)
 
 ---
 
@@ -116,7 +132,7 @@ This extension prioritizes your privacy:
 Download the latest `.vsix` from [Releases](https://github.com/analyticendeavors/claude-usage-analytics/releases), then:
 
 ```bash
-code --install-extension claude-usage-analytics-1.0.0.vsix
+code --install-extension claude-usage-analytics-1.0.1.vsix
 ```
 
 ### Option 2: From Source
@@ -136,7 +152,7 @@ npm run compile
 npx vsce package
 
 # Install the generated .vsix
-code --install-extension claude-usage-analytics-1.0.0.vsix
+code --install-extension claude-usage-analytics-1.0.1.vsix
 ```
 
 ---
@@ -164,9 +180,9 @@ code --install-extension claude-usage-analytics-1.0.0.vsix
 
 The extension adds widgets to your VS Code status bar:
 - **Left side**: Cost, messages, tokens, personality, activity stats
-- **Right side**: Rate limit indicators
+- **Right side**: Subscription tier indicator
 
-**Click any widget** to open the dashboard focused on the relevant tab.
+**Click any widget** to open the dashboard focused on the relevant tab. Each tooltip shows "Click to open [Tab Name]" for easy navigation.
 
 ### Keyboard Shortcuts
 
@@ -200,8 +216,8 @@ claude-usage-analytics/
 │   ├── extension.ts        # Extension entry point & command registration
 │   ├── statusBar.ts        # 7 status bar widgets with tooltips
 │   ├── dashboardView.ts    # 4-tab webview dashboard
-│   ├── dataProvider.ts     # Stats parsing & cost calculations
-│   └── limitsProvider.ts   # OAuth rate limit API integration
+│   ├── dataProvider.ts     # Stats parsing, cost calculations & real-time today
+│   └── limitsProvider.ts   # Subscription tier from credentials
 ├── out/                    # Compiled JavaScript
 ├── media/
 │   ├── icon.png           # Extension icon (128x128)
@@ -216,7 +232,8 @@ claude-usage-analytics/
 | **StatusBarManager** | Creates and updates 7 status bar items with rich tooltips |
 | **DashboardViewProvider** | Renders the 4-tab webview with real-time data |
 | **getUsageData()** | Parses `stats-cache.json` and calculates all metrics |
-| **getUsageLimits()** | Fetches rate limits from Anthropic API using OAuth token |
+| **getTodayRealTimeUsage()** | Reads JSONL files for accurate today's cost |
+| **getSubscriptionInfo()** | Reads subscription tier from credentials file |
 
 ---
 
@@ -227,21 +244,20 @@ Ensure Claude Code CLI is installed and you've used it at least once. The extens
 
 ### How accurate are the cost calculations?
 Costs use model-specific pricing:
-- **Claude Opus**: $15/1M input, $75/1M output
+- **Claude Opus 4.5**: $15/1M input, $75/1M output, $18.75/1M cache write, $1.50/1M cache read
 - **Claude Sonnet**: $3/1M input, $15/1M output
-- **Cache tokens**: Discounted rates applied
 
-The extension calculates a blended rate based on your actual model usage mix.
+Today's cost is calculated in real-time from conversation files for maximum accuracy.
 
-### Why do rate limits show "--"?
-The OAuth token may have expired. Re-authenticate with `claude auth login` and restart VS Code.
+### Why does the subscription widget show "N/A"?
+Claude Code credentials may not be found. Ensure you're authenticated with `claude auth login`.
 
 ### How often does data refresh?
 - **Automatic**: Every 2 minutes
 - **Manual**: Click refresh button or press `Ctrl+Alt+R`
 
 ### Is my data sent anywhere?
-No. All analysis happens locally. The only network call is to Anthropic's API to fetch your rate limit status (using your existing OAuth token).
+No. All analysis happens locally. There are no network calls — the extension operates fully offline.
 
 ### Can I use this without Claude Code CLI?
 No. This extension specifically reads Claude Code's local statistics files. It's designed as a companion tool for Claude Code users.
@@ -257,11 +273,11 @@ No. This extension specifically reads Claude Code's local statistics files. It's
 3. Confirm stats file exists: `ls ~/.claude/stats-cache.json`
 4. Try using Claude Code once to generate initial data
 
-### Rate limits display errors
+### Subscription shows "N/A"
 
 1. Re-authenticate: `claude auth login`
 2. Restart VS Code
-3. Check Output panel: **View > Output > Claude Usage Analytics**
+3. Check credentials file exists: `ls ~/.claude/.credentials.json`
 
 ### Dashboard not loading
 
@@ -302,6 +318,26 @@ npx vsce package   # Create .vsix package
 
 ---
 
+## Changelog
+
+### v1.0.1 (2025-12-21)
+- **Real-time today's cost**: Now reads directly from conversation JSONL files for accurate current-day statistics
+- **Subscription tier display**: Shows Max 20x, Max, Pro, or Free tier instead of rate limit percentages
+- **Fully offline**: Removed all network API calls — extension operates completely locally
+- **Improved tooltips**: All status bar widgets now show "Click to open [Tab Name]" for clarity
+- **Removed Limits section**: Dashboard no longer shows the obsolete rate limit progress bars
+- **Fixed credentials reading**: Now correctly reads from `~/.claude/.credentials.json`
+
+### v1.0.0 (2025-12-20)
+- Initial release
+- 7 status bar widgets with rich tooltips
+- 4-tab interactive dashboard
+- Cost analytics with model-specific pricing
+- Personality insights and achievements
+- Activity tracking and coding patterns
+
+---
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
@@ -310,16 +346,9 @@ Copyright (c) 2024-2025 Analytic Endeavors
 
 ---
 
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
-
----
-
 ## Acknowledgments
 
 - Built with [Claude Code](https://claude.ai/claude-code)
-- Uses [keytar](https://github.com/atom/node-keytar) for secure credential storage
 - Inspired by the need to understand AI-assisted development patterns
 
 ---

@@ -311,6 +311,57 @@ function analyzeText(text, stats) {
         stats.celebrationMoments++;
     }
 }
+/**
+ * Read real-time today's usage directly from conversation JSONL files
+ */
+function getTodayRealTimeUsage() {
+    try {
+        const homeDir = os.homedir();
+        const projectsDir = path.join(homeDir, '.claude', 'projects');
+        if (!fs.existsSync(projectsDir))
+            return null;
+        const today = new Date().toISOString().split('T')[0];
+        let inputTokens = 0, outputTokens = 0, cacheCreationTokens = 0, cacheReadTokens = 0, totalMessages = 0;
+        const projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+            .filter(d => d.isDirectory()).map(d => path.join(projectsDir, d.name));
+        for (const projDir of projectDirs) {
+            const files = fs.readdirSync(projDir, { withFileTypes: true })
+                .filter(f => f.isFile() && f.name.endsWith('.jsonl'));
+            for (const file of files) {
+                const filePath = path.join(projDir, file.name);
+                const fileStat = fs.statSync(filePath);
+                if (fileStat.mtime.toISOString().split('T')[0] !== today || fileStat.size === 0)
+                    continue;
+                try {
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    for (const line of content.split('\n').filter(l => l.trim())) {
+                        try {
+                            const entry = JSON.parse(line);
+                            if (entry.type === 'assistant' && entry.message?.usage && entry.timestamp?.startsWith(today)) {
+                                const u = entry.message.usage;
+                                inputTokens += u.input_tokens || 0;
+                                outputTokens += u.output_tokens || 0;
+                                cacheCreationTokens += u.cache_creation_input_tokens || 0;
+                                cacheReadTokens += u.cache_read_input_tokens || 0;
+                                totalMessages++;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+        }
+        if (totalMessages === 0)
+            return null;
+        const totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
+        const cost = (inputTokens / 1e6) * 15 + (outputTokens / 1e6) * 75 + (cacheCreationTokens / 1e6) * 18.75 + (cacheReadTokens / 1e6) * 1.50;
+        return { tokens: totalTokens, messages: totalMessages, cost };
+    }
+    catch {
+        return null;
+    }
+}
 function getUsageData() {
     // Default data if not available
     const defaultData = {
@@ -443,29 +494,29 @@ function getUsageData() {
                     const lastDate = statsCache.lastComputedDate;
                     defaultData.allTime.dateRange = `${firstDate} ~ ${lastDate}`;
                 }
-                // Today's data from dailyActivity (or most recent if today not available)
-                if (statsCache.dailyActivity && Array.isArray(statsCache.dailyActivity)) {
-                    const today = new Date().toISOString().split('T')[0];
-                    let targetData = statsCache.dailyActivity.find((d) => d.date === today);
-                    // If today's data isn't available, use the most recent day
-                    if (!targetData && statsCache.dailyActivity.length > 0) {
-                        targetData = statsCache.dailyActivity[statsCache.dailyActivity.length - 1];
-                    }
-                    if (targetData) {
-                        defaultData.today.messages = targetData.messageCount || 0;
-                    }
+                // Today's data - try real-time from JSONL files first
+                const realTimeToday = getTodayRealTimeUsage();
+                if (realTimeToday) {
+                    defaultData.today.tokens = realTimeToday.tokens;
+                    defaultData.today.messages = realTimeToday.messages;
+                    defaultData.today.cost = realTimeToday.cost;
                 }
-                // Today's tokens from dailyModelTokens (or most recent if today not available)
-                if (statsCache.dailyModelTokens && Array.isArray(statsCache.dailyModelTokens)) {
-                    const today = new Date().toISOString().split('T')[0];
-                    let targetTokens = statsCache.dailyModelTokens.find((d) => d.date === today);
-                    // If today's data isn't available, use the most recent day
-                    if (!targetTokens && statsCache.dailyModelTokens.length > 0) {
-                        targetTokens = statsCache.dailyModelTokens[statsCache.dailyModelTokens.length - 1];
+                else {
+                    // Fallback to cached data only if real-time not available
+                    if (statsCache.dailyActivity && Array.isArray(statsCache.dailyActivity)) {
+                        const today = new Date().toISOString().split('T')[0];
+                        const targetData = statsCache.dailyActivity.find((d) => d.date === today);
+                        if (targetData) {
+                            defaultData.today.messages = targetData.messageCount || 0;
+                        }
                     }
-                    if (targetTokens && targetTokens.tokensByModel) {
-                        defaultData.today.tokens = Object.values(targetTokens.tokensByModel)
-                            .reduce((sum, t) => sum + (t || 0), 0);
+                    if (statsCache.dailyModelTokens && Array.isArray(statsCache.dailyModelTokens)) {
+                        const today = new Date().toISOString().split('T')[0];
+                        const targetTokens = statsCache.dailyModelTokens.find((d) => d.date === today);
+                        if (targetTokens && targetTokens.tokensByModel) {
+                            defaultData.today.tokens = Object.values(targetTokens.tokensByModel)
+                                .reduce((sum, t) => sum + (t || 0), 0);
+                        }
                     }
                 }
                 // Build daily history for charts (last 14 days)

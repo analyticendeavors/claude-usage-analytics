@@ -2,7 +2,7 @@
   "name": "claude-usage-analytics",
   "displayName": "Claude Usage Analytics",
   "description": "Real-time Claude Code usage stats, costs, and analytics in VS Code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "analyticendeavors",
   "icon": "media/icon.png",
   "license": "MIT",

@@ -104,8 +104,6 @@ class DashboardViewProvider {
         return `<svg width="${size}" height="${size}" style="display:block;margin:0 auto;">${paths}</svg>`;
     }
     getOverviewTab(data) {
-        const sessionPct = data.limits.session.percentage;
-        const weeklyPct = data.limits.weekly.percentage;
         const getColor = (pct) => pct >= 90 ? '#ff4757' : pct >= 70 ? '#ffa502' : '#2ed573';
         const barChart = this.getBarChartSvg(data);
         const pieChart = this.getModelPieChart(data);
@@ -131,30 +129,6 @@ class DashboardViewProvider {
                     </div>
                 </div>
             </div>
-
-            <!-- Limits -->
-            <div class="section">
-                <div class="section-title">Limits</div>
-                <div class="limit-item">
-                    <div class="limit-header">
-                        <span>Session (5h)</span>
-                        <span style="color: ${getColor(sessionPct)}; font-weight: 600">${sessionPct.toFixed(0)}%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${Math.min(100, sessionPct)}%; background: ${getColor(sessionPct)}"></div>
-                    </div>
-                </div>
-                <div class="limit-item">
-                    <div class="limit-header">
-                        <span>Weekly (7d)</span>
-                        <span style="color: ${getColor(weeklyPct)}; font-weight: 600">${weeklyPct.toFixed(0)}%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${Math.min(100, weeklyPct)}%; background: ${getColor(weeklyPct)}"></div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Daily Activity Chart -->
             ${barChart ? `
             <div class="section">

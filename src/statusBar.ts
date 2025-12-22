@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getUsageData, UsageData, getDebugStats } from './dataProvider';
-import { getUsageLimits, LimitsData } from './limitsProvider';
+import { getSubscriptionInfo, SubscriptionData } from './limitsProvider';
 
 export class StatusBarManager implements vscode.Disposable {
     private lifetimeCost: vscode.StatusBarItem;
@@ -119,7 +119,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `📊 Avg/day: ${this.formatCostFull(data.funStats.avgDayCost)}\n\n` +
                 `🔮 Projected/month: ${this.formatCostFull(data.funStats.projectedMonthlyCost)}\n\n` +
                 `---\n\n` +
-                `_Click to open analytics_`
+                `_Click to open Overview_`
             );
             this.lifetimeCost.color = "#2ed573";
 
@@ -140,7 +140,9 @@ export class StatusBarManager implements vscode.Disposable {
                 `**Comparisons**\n\n` +
                 `📊 vs Yesterday: ${vsYesterday}%\n\n` +
                 `📈 vs Average: ${vsAvg}%\n\n` +
-                `🔥 Streak: ${data.funStats.streak} days`
+                `🔥 Streak: ${data.funStats.streak} days\n\n` +
+                `---\n\n` +
+                `_Click to open Cost_`
             );
             this.todayCost.color = "#ffa502";
 
@@ -156,7 +158,9 @@ export class StatusBarManager implements vscode.Disposable {
                 `🏆 Peak day: ${data.funStats.peakDay.date} (${this.formatNumberFull(data.funStats.peakDay.messages)} msgs)\n\n` +
                 `📈 Longest session: ${this.formatNumberFull(data.funStats.longestSessionMessages)} msgs\n\n` +
                 `---\n\n` +
-                `🦉 Night Owl: ${data.funStats.nightOwlScore}% | 🐦 Early Bird: ${data.funStats.earlyBirdScore}%`
+                `🦉 Night Owl: ${data.funStats.nightOwlScore}% | 🐦 Early Bird: ${data.funStats.earlyBirdScore}%\n\n` +
+                `---\n\n` +
+                `_Click to open Messages_`
             );
             this.messages.color = "#3498db";
 
@@ -171,7 +175,9 @@ export class StatusBarManager implements vscode.Disposable {
                 `**Cache Efficiency**\n\n` +
                 `📊 Cache hit ratio: ${data.funStats.cacheHitRatio}%\n\n` +
                 `💵 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
-                `🗄️ Cached tokens: ${this.formatNumberScaled(data.allTime.cacheTokens)}`
+                `🗄️ Cached tokens: ${this.formatNumberScaled(data.allTime.cacheTokens)}\n\n` +
+                `---\n\n` +
+                `_Click to open Messages_`
             );
             this.tokens.color = "#9b59b6";
 
@@ -209,7 +215,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `🙏 Please: ${this.formatNumberFull(cs.pleaseCount)}\n\n` +
                 `💕 Thanks: ${this.formatNumberFull(cs.thanksCount)}\n\n` +
                 `---\n\n` +
-                `_Click for full personality report_`
+                `_Click to open Personality_`
             );
             this.personality.color = "#e056fd";
 
@@ -251,7 +257,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `📈 Positivity: ${positivityPct}%\n\n` +
                 `😱 CAPS RAGE: ${cs.capsLockMessages} | 😂 LOLs: ${cs.lolCount}\n\n` +
                 `---\n\n` +
-                `_Click for full activity report_`
+                `_Click to open Personality_`
             );
             this.activity.color = "#00d2d3";
 
@@ -271,68 +277,30 @@ export class StatusBarManager implements vscode.Disposable {
 
     private async updateLimits(): Promise<void> {
         try {
-            // Show loading state
-            this.limits.text = "$(sync~spin) ...";
-            this.limits.tooltip = "Fetching usage limits...";
+            const subscription = await getSubscriptionInfo();
 
-            const limits = await getUsageLimits();
-
-            if (limits.error) {
-                // Error fetching - hide the widget or show error
-                this.limits.text = "$(warning) Limits";
-                this.limits.tooltip = `Could not fetch limits: ${limits.error}`;
+            if (subscription.error) {
+                this.limits.text = "$(pulse) N/A";
+                this.limits.tooltip = "Claude Code credentials not found";
                 this.limits.color = "#888888";
                 return;
             }
 
-            const fiveHourPct = limits.fiveHour.percentage;
-            const sevenDayPct = limits.sevenDay.percentage;
+            // Show tier info
+            this.limits.text = `$(pulse) ${subscription.tierDisplay}`;
+            this.limits.color = "#2ed573";
 
-            // Choose icon and color based on usage
-            let icon = "$(pulse)";
-            let color: string;
-
-            if (fiveHourPct >= 90 || sevenDayPct >= 90) {
-                icon = "$(warning)";
-                color = "#ff4757";
-            } else if (fiveHourPct >= 70 || sevenDayPct >= 70) {
-                icon = "$(info)";
-                color = "#ffa502";
-            } else {
-                color = "#2ed573";
-            }
-
-            this.limits.text = `${icon} 5h:${fiveHourPct.toFixed(0)}% 7d:${sevenDayPct.toFixed(0)}%`;
-            this.limits.color = color;
-
-            // Format reset times
-            const formatReset = (isoTime: string): string => {
-                if (!isoTime) return 'Unknown';
-                try {
-                    const date = new Date(isoTime);
-                    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                } catch {
-                    return isoTime;
-                }
-            };
-
-            let tooltipText = `**Usage Limits**\n\n` +
-                `⏱️ 5-hour: ${fiveHourPct.toFixed(1)}%\n\n` +
-                `🔄 Resets: ${formatReset(limits.fiveHour.resetTime)}\n\n` +
+            const tooltipText = `**Subscription Tier**\n\n` +
+                `📊 Plan: ${subscription.subscriptionType.charAt(0).toUpperCase() + subscription.subscriptionType.slice(1)}\n\n` +
+                `⚡ Rate Limit: ${subscription.tierDisplay}\n\n` +
                 `---\n\n` +
-                `📅 7-day: ${sevenDayPct.toFixed(1)}%\n\n` +
-                `🔄 Resets: ${formatReset(limits.sevenDay.resetTime)}`;
-
-            if (limits.sevenDayOpus) {
-                tooltipText += `\n\n---\n\n` +
-                    `🟣 Opus 7-day: ${limits.sevenDayOpus.percentage.toFixed(1)}%`;
-            }
+                `_Click to open Overview_`;
 
             this.limits.tooltip = new vscode.MarkdownString(tooltipText);
 
         } catch (error) {
-            this.limits.text = "$(warning) --";
-            this.limits.tooltip = "Failed to fetch limits";
+            this.limits.text = "$(pulse) --";
+            this.limits.tooltip = "Failed to read subscription info";
             this.limits.color = "#888888";
         }
     }
