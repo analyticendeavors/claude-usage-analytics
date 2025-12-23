@@ -28,6 +28,7 @@ After backfilling, your Claude Usage Analytics dashboard will include historical
 |----------|---------|
 | **Usage Stats** | Daily message counts, estimated tokens, session counts |
 | **Cost Estimates** | API-equivalent costs based on Sonnet pricing |
+| **Code Statistics** | Code blocks generated, lines of code, top languages |
 | **Personality** | Politeness score, questions asked, exclamations, please/thanks counts |
 | **Activity** | Peak hours, night owl vs early bird scores, daily patterns |
 | **Time Analytics** | Claude thinking time, estimated user active time |
@@ -47,6 +48,14 @@ TIME ANALYTICS
   User active time:        216.4 hours
   Peak activity hour:      22:00
   Night owl score:         53%
+
+CODE STATISTICS
+  Code blocks:             4,292
+  Lines of code:           35,715
+  Top languages:
+    python               10,393 lines
+    typescript            2,156 lines
+    javascript            1,823 lines
 
 PERSONALITY METRICS
   Politeness score:        7%

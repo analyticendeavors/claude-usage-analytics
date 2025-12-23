@@ -903,6 +903,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                         <span class="info-value">${this.formatNumber(cs.totalWords)}</span>
                     </div>
                 </div>
+                <div class="section-note">
+                    Code stats collected from install date forward. For historical data,
+                    <a href="https://github.com/havenhq/claude-usage-analytics#backfill-from-claudeai-export-optional">run the backfill script</a>
+                    with your Claude.ai data export.
+                </div>
             </div>
         `;
     }
@@ -1111,6 +1116,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             font-weight: 600;
             color: var(--vscode-foreground);
             white-space: nowrap;
+        }
+        .section-note {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--vscode-panel-border);
+            line-height: 1.4;
+        }
+        .section-note a {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: none;
+        }
+        .section-note a:hover {
+            text-decoration: underline;
         }
 
         /* Mini Progress Bars */

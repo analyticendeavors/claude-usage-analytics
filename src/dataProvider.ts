@@ -379,11 +379,7 @@ export function getUsageData(): UsageData {
             defaultData.allTime.totalTokens = totalTokens;
             defaultData.allTime.cacheTokens = 0; // Can't determine from daily breakdown
             defaultData.models = models.sort((a, b) => b.tokens - a.tokens).slice(0, 5);
-
-            // Cache efficiency - estimate from daily data (not available in daily breakdown)
-            // Set reasonable defaults since we can't calculate from daily data
-            defaultData.funStats.cacheHitRatio = 0;
-            defaultData.funStats.cacheSavings = 0;
+            // Note: Cache efficiency is already calculated from modelUsage above, don't overwrite
         }
 
         // === DAILY HISTORY (from dailyActivity + dailyModelTokens) ===
@@ -557,16 +553,22 @@ export function getUsageData(): UsageData {
         }
 
         // === STREAK CALCULATION ===
+        // Count consecutive days with activity, allowing today to be missing (cache may not be updated yet)
         let streak = 0;
-        if (daysWithActivity.has(todayStr) || daysWithActivity.has(yesterdayStr)) {
-            const checkDate = new Date();
-            for (let i = 0; i < 365; i++) {
-                if (daysWithActivity.has(getLocalDateString(checkDate))) {
-                    streak++;
-                    checkDate.setDate(checkDate.getDate() - 1);
-                } else {
-                    break;
-                }
+        const checkDate = new Date();
+
+        // If today has no activity, start from yesterday (cache might not be updated yet)
+        if (!daysWithActivity.has(todayStr)) {
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+
+        // Count consecutive days going backwards
+        for (let i = 0; i < 365; i++) {
+            if (daysWithActivity.has(getLocalDateString(checkDate))) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
             }
         }
         defaultData.funStats.streak = streak;

@@ -63,6 +63,9 @@ CURSE_WORDS = {'damn', 'hell', 'crap', 'shit', 'fuck', 'ass', 'bastard', 'bitch'
 POLITE_WORDS = {'please', 'thank', 'thanks', 'appreciate', 'grateful', 'kindly'}
 FRUSTRATION_WORDS = {'frustrated', 'annoying', 'broken', 'stupid', 'hate', 'ugh', 'argh', 'wtf'}
 
+# Regex for markdown code blocks: ```language\ncode\n```
+CODE_BLOCK_PATTERN = re.compile(r'```(\w*)\n(.*?)```', re.DOTALL)
+
 
 def get_model_pricing(model_name: str) -> dict:
     """Get pricing for a model based on its name."""
@@ -79,6 +82,29 @@ def get_model_pricing(model_name: str) -> dict:
 def estimate_tokens(text: str) -> int:
     """Estimate token count from text length."""
     return len(text) // CHARS_PER_TOKEN
+
+
+def count_code_blocks(text: str) -> dict:
+    """Count code blocks, lines of code, and languages in text."""
+    result = {
+        'code_blocks': 0,
+        'lines_of_code': 0,
+        'languages': defaultdict(int)
+    }
+
+    matches = CODE_BLOCK_PATTERN.findall(text)
+    for lang, code in matches:
+        result['code_blocks'] += 1
+        # Count non-empty lines
+        lines = [line for line in code.split('\n') if line.strip()]
+        result['lines_of_code'] += len(lines)
+        # Track language (normalize to lowercase, default to 'other')
+        lang = lang.lower().strip() if lang else 'other'
+        if not lang:
+            lang = 'other'
+        result['languages'][lang] += len(lines)
+
+    return result
 
 
 def parse_timestamp(ts: str) -> datetime:
@@ -147,6 +173,10 @@ def process_conversations(data_dir: Path) -> dict:
         'caps_rage': 0,
         'lol_count': 0,
         'word_count': 0,
+        # Code stats
+        'code_blocks': 0,
+        'lines_of_code': 0,
+        'languages': defaultdict(int),
         # Activity by hour (0-23)
         'hours': defaultdict(int)
     })
@@ -215,6 +245,12 @@ def process_conversations(data_dir: Path) -> dict:
                                 daily_stats[date]['word_count'] += value
                     else:
                         daily_stats[date]['output_tokens'] += tokens
+                        # Count code blocks in assistant responses
+                        code_stats = count_code_blocks(text)
+                        daily_stats[date]['code_blocks'] += code_stats['code_blocks']
+                        daily_stats[date]['lines_of_code'] += code_stats['lines_of_code']
+                        for lang, lines in code_stats['languages'].items():
+                            daily_stats[date]['languages'][lang] += lines
 
                 # Thinking content (Claude's reasoning)
                 elif content_type == 'thinking':
@@ -382,6 +418,10 @@ def export_json_summary(daily_stats: dict, output_path: Path):
         'total_caps_rage': 0,
         'total_lol_count': 0,
         'total_word_count': 0,
+        # Code stats
+        'total_code_blocks': 0,
+        'total_lines_of_code': 0,
+        'languages': defaultdict(int),
         # Activity by hour
         'hourly_activity': defaultdict(int)
     }
@@ -411,6 +451,12 @@ def export_json_summary(daily_stats: dict, output_path: Path):
         for hour, count in stats['hours'].items():
             totals['hourly_activity'][hour] += count
 
+        # Code stats
+        totals['total_code_blocks'] += stats['code_blocks']
+        totals['total_lines_of_code'] += stats['lines_of_code']
+        for lang, lines in stats['languages'].items():
+            totals['languages'][lang] += lines
+
     # Calculate derived metrics
     totals['politeness_score'] = min(100, int(
         (totals['total_please_count'] + totals['total_thanks_count']) /
@@ -418,6 +464,12 @@ def export_json_summary(daily_stats: dict, output_path: Path):
     ))
 
     totals['hourly_activity'] = dict(totals['hourly_activity'])
+    totals['languages'] = dict(totals['languages'])
+
+    # Top languages by lines of code
+    if totals['languages']:
+        sorted_langs = sorted(totals['languages'].items(), key=lambda x: x[1], reverse=True)
+        totals['top_languages'] = sorted_langs[:10]
 
     # Peak hour
     if totals['hourly_activity']:
@@ -450,7 +502,9 @@ def export_json_summary(daily_stats: dict, output_path: Path):
                 'cost': stats['cost'],
                 'sessions': stats['sessions'],
                 'thinking_time_minutes': round(stats['thinking_time_ms'] / 1000 / 60, 2),
-                'user_active_minutes': round(stats['user_active_time_ms'] / 1000 / 60, 2)
+                'user_active_minutes': round(stats['user_active_time_ms'] / 1000 / 60, 2),
+                'code_blocks': stats['code_blocks'],
+                'lines_of_code': stats['lines_of_code']
             }
             for date, stats in sorted(daily_stats.items())
         }
@@ -460,6 +514,69 @@ def export_json_summary(daily_stats: dict, output_path: Path):
         json.dump(output, f, indent=2)
 
     return totals
+
+
+def update_conversation_stats_cache(totals: dict):
+    """Update the conversation-stats-cache.json file that the extension reads."""
+    cache_path = Path.home() / '.claude' / 'conversation-stats-cache.json'
+
+    # Build the stats object that the extension expects
+    stats = {
+        'curseWords': totals['total_curse_words'],
+        'totalWords': totals['total_word_count'],
+        'longestMessage': 0,  # Not tracked in backfill
+        'questionsAsked': totals['total_questions'],
+        'exclamations': totals['total_exclamations'],
+        'thanksCount': totals['total_thanks_count'],
+        'sorryCount': 0,  # Not tracked
+        'emojiCount': 0,  # Not tracked
+        'capsLockMessages': totals['total_caps_rage'],
+        'codeBlocks': totals['total_code_blocks'],
+        'linesOfCode': totals['total_lines_of_code'],
+        'topLanguages': dict(totals.get('languages', {})),
+        'requestTypes': {
+            'debugging': 0, 'features': 0, 'explain': 0,
+            'refactor': 0, 'review': 0, 'testing': 0
+        },
+        'sentiment': {'positive': 0, 'negative': 0, 'urgent': 0, 'confused': 0},
+        'pleaseCount': totals['total_please_count'],
+        'lolCount': totals['total_lol_count'],
+        'facepalms': 0,
+        'celebrationMoments': 0
+    }
+
+    # Merge with existing cache if present
+    existing = {}
+    if cache_path.exists():
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+        except:
+            pass
+
+    # Merge stats - add to existing rather than replace
+    if 'stats' in existing:
+        for key in ['curseWords', 'totalWords', 'questionsAsked', 'exclamations',
+                    'thanksCount', 'capsLockMessages', 'codeBlocks', 'linesOfCode',
+                    'pleaseCount', 'lolCount']:
+            if key in existing['stats']:
+                stats[key] = max(stats[key], existing['stats'][key])
+        # Merge topLanguages
+        if 'topLanguages' in existing['stats']:
+            for lang, lines in existing['stats']['topLanguages'].items():
+                stats['topLanguages'][lang] = stats['topLanguages'].get(lang, 0) + lines
+
+    output = {
+        'lastUpdated': datetime.now().isoformat(),
+        'source': 'backfill_claude_export.py',
+        'stats': stats
+    }
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        json.dump(output, f, indent=2)
+
+    print(f"\nUpdated conversation stats cache: {cache_path}")
 
 
 def print_summary(totals: dict):
@@ -498,6 +615,15 @@ def print_summary(totals: dict):
     print(f"  CAPS RAGE messages:      {totals['total_caps_rage']:,}")
     print(f"  LOL count:               {totals['total_lol_count']:,}")
     print(f"  Total words:             {totals['total_word_count']:,}")
+
+    print(f"\n{'CODE STATISTICS':^60}")
+    print("-" * 60)
+    print(f"  Code blocks:             {totals['total_code_blocks']:,}")
+    print(f"  Lines of code:           {totals['total_lines_of_code']:,}")
+    if totals.get('top_languages'):
+        print("  Top languages:")
+        for lang, lines in totals['top_languages'][:5]:
+            print(f"    {lang:20s}   {lines:,} lines")
 
     print("\n" + "=" * 60)
 
@@ -558,6 +684,10 @@ Examples:
 
     # Print summary
     print_summary(totals)
+
+    # Update conversation stats cache (for personality/code stats in extension)
+    if not args.json_only:
+        update_conversation_stats_cache(totals)
 
     print("\nDone! Restart VSCode or refresh the Claude Usage extension to see updated stats.")
 

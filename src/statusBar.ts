@@ -111,7 +111,7 @@ export class StatusBarManager implements vscode.Disposable {
             this.lifetimeCost.tooltip = new vscode.MarkdownString(
                 `**Account Total (Lifetime)**\n\n` +
                 `💰 Total: ${this.formatCostFull(acct.cost)}\n\n` +
-                `🔢 Tokens: ${this.formatNumberFull(acct.tokens)}\n\n` +
+                `🪙 Tokens: ${this.formatNumberFull(acct.tokens)}\n\n` +
                 `💬 Messages: ${this.formatNumberFull(acct.messages)}\n\n` +
                 `📊 Sessions: ${this.formatNumberFull(acct.sessions)}\n\n` +
                 `---\n\n` +
@@ -154,8 +154,8 @@ export class StatusBarManager implements vscode.Disposable {
             this.todayCost.text = `$(calendar) ${this.formatCostScaled(data.today.cost)}`;
             this.todayCost.tooltip = new vscode.MarkdownString(
                 `**Today's Usage (API Cost)**\n\n` +
-                `💵 Cost: ${this.formatCostFull(data.today.cost)}\n\n` +
-                `🔢 Tokens: ${this.formatNumberFull(data.today.tokens)}\n\n` +
+                `💸 Cost: ${this.formatCostFull(data.today.cost)}\n\n` +
+                `🪙 Tokens: ${this.formatNumberFull(data.today.tokens)}\n\n` +
                 `💬 Messages: ${this.formatNumberFull(data.today.messages)}${budgetInfo}\n\n` +
                 `---\n\n` +
                 `**Comparisons**\n\n` +
@@ -190,13 +190,13 @@ export class StatusBarManager implements vscode.Disposable {
             this.tokens.text = `$(symbol-number) ${this.formatNumberScaled(acct.tokens)}`;
             this.tokens.tooltip = new vscode.MarkdownString(
                 `**Account Total Tokens**\n\n` +
-                `🔢 Total: ${this.formatNumberFull(acct.tokens)} tokens\n\n` +
+                `🪙 Total: ${this.formatNumberFull(acct.tokens)} tokens\n\n` +
                 `📥 Input: ${this.formatNumberScaled(acct.inputTokens)}\n\n` +
                 `📤 Output: ${this.formatNumberScaled(acct.outputTokens)}\n\n` +
                 `---\n\n` +
                 `**Cache Efficiency**\n\n` +
                 `📊 Cache hit ratio: ${data.funStats.cacheHitRatio}%\n\n` +
-                `💵 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
+                `💸 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
                 `🗄️ Cache read: ${this.formatNumberScaled(acct.cacheReadTokens)}\n\n` +
                 `---\n\n` +
                 `_Click to open Messages_`

@@ -112,6 +112,8 @@ A comprehensive 4-tab analytics panel with deep insights:
 - **Peak hours analysis** — when you're most active
 - **Night owl vs early bird** scoring
 
+> **Note**: Code block statistics are collected from your extension install date forward. To include historical code stats, use the [backfill script](#backfill-from-claudeai-export-optional) with your Claude.ai data export.
+
 ---
 
 ## Privacy & Security
@@ -126,10 +128,13 @@ This extension prioritizes your privacy:
 | **Open Source** | Full source code available for audit |
 
 **Data Sources:**
-- `~/.claude/stats-cache.json` — Token usage and model statistics (Claude Code's rolling 30-day window)
-- `~/.claude/analytics.db` — SQLite database preserving your full usage history
+- `~/.claude/stats-cache.json` — Token usage and model statistics (Claude Code's rolling 30-day window, updated periodically by Claude Code)
+- `~/.claude/analytics.db` — SQLite database preserving your full usage history (managed by this extension)
+- `~/.claude/conversation-stats-cache.json` — Personality and code stats (updated by backfill script)
 - `~/.claude/projects/*/` — Conversation history for personality analysis and real-time today's cost
 - `~/.claude/.credentials.json` — Subscription tier information (read-only)
+
+> **Note**: Today's stats may show $0.00 if Claude Code hasn't updated its cache yet. End your session or wait for the automatic cache update to see current data.
 
 ---
 
@@ -171,10 +176,13 @@ python backfill_claude_export.py "path/to/data-export-folder"
 This imports:
 - Daily message counts and estimated token usage
 - Estimated API-equivalent costs
+- **Code blocks and lines of code** (with language breakdown)
 - Personality analysis (questions, please/thanks, etc.)
 - Activity patterns (peak hours, night owl/early bird scores)
 - Claude thinking time analytics
 - User active time estimates
+
+**Why backfill?** The extension can only track code blocks and personality stats from the day you install it. Running the backfill script imports your complete history from Claude.ai, giving you accurate lifetime statistics.
 
 See [BACKFILL_GUIDE.md](BACKFILL_GUIDE.md) for detailed instructions.
 
@@ -311,6 +319,16 @@ Claude Code credentials may not be found. Ensure you're authenticated with `clau
 ### How often does data refresh?
 - **Automatic**: Every 2 minutes
 - **Manual**: Click refresh button or press `Ctrl+Alt+R`
+
+### Why does "Today's" usage show $0.00 when I'm actively using Claude?
+The extension reads from Claude Code's cache file (`~/.claude/stats-cache.json`), which Claude Code updates periodically - **not in real-time**. Your current session data won't appear until Claude Code writes to the cache.
+
+**To force a cache update:**
+1. End your current Claude Code session (close the terminal or run `/exit`)
+2. Start a new session - this typically triggers a cache write
+3. Alternatively, wait for Claude Code's automatic cache update (varies by activity)
+
+The extension does calculate real-time today's cost by reading conversation JSONL files directly, but token counts and message stats rely on the cache.
 
 ### Is my data sent anywhere?
 No. All analysis happens locally. There are no network calls — the extension operates fully offline.
