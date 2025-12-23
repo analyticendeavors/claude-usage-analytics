@@ -99,6 +99,7 @@ export class StatusBarManager implements vscode.Disposable {
 
     public refresh() {
         try {
+            // Cache-only mode - always instant
             const data = getUsageData();
 
             // Lifetime cost - scaled display, full on hover
@@ -106,8 +107,9 @@ export class StatusBarManager implements vscode.Disposable {
                 data.funStats.costTrend === 'down' ? '📉' : '➡️';
             this.lifetimeCost.text = `$(graph) ${this.formatCostScaled(data.allTime.cost)}`;
             this.lifetimeCost.tooltip = new vscode.MarkdownString(
-                `**Claude Lifetime Cost**\n\n` +
+                `**API Cost Equivalent (Lifetime)**\n\n` +
                 `💰 All-time: ${this.formatCostFull(data.allTime.cost)}\n\n` +
+                `_Based on per-token API rates, not subscription cost_\n\n` +
                 `---\n\n` +
                 `📊 Sessions: ${this.formatNumberFull(data.allTime.sessions)}\n\n` +
                 `📅 Days Active: ${data.allTime.daysActive}\n\n` +
@@ -124,18 +126,38 @@ export class StatusBarManager implements vscode.Disposable {
             this.lifetimeCost.color = "#2ed573";
 
             // Today's cost - scaled display, full on hover
-            const vsYesterday = data.funStats.yesterdayCost > 0
-                ? ((data.today.cost - data.funStats.yesterdayCost) / data.funStats.yesterdayCost * 100).toFixed(0)
-                : '0';
-            const vsAvg = data.funStats.avgDayCost > 0
-                ? ((data.today.cost - data.funStats.avgDayCost) / data.funStats.avgDayCost * 100).toFixed(0)
-                : '0';
+            const vsYesterdayNum = data.funStats.yesterdayCost > 0
+                ? Math.round((data.today.cost - data.funStats.yesterdayCost) / data.funStats.yesterdayCost * 100)
+                : 0;
+            const vsYesterday = vsYesterdayNum.toLocaleString('en-US');
+            const vsAvgNum = data.funStats.avgDayCost > 0
+                ? Math.round((data.today.cost - data.funStats.avgDayCost) / data.funStats.avgDayCost * 100)
+                : 0;
+            const vsAvg = vsAvgNum.toLocaleString('en-US');
+
+            // Budget-aware coloring
+            const config = vscode.workspace.getConfiguration('claudeUsage');
+            const dailyBudget = config.get<number>('dailyBudget', 0);
+            let todayCostColor = "#ffa502"; // Default orange
+            let budgetInfo = '';
+            if (dailyBudget > 0) {
+                const budgetPct = (data.today.cost / dailyBudget) * 100;
+                if (budgetPct >= 90) {
+                    todayCostColor = "#ff4757"; // Red
+                } else if (budgetPct >= 70) {
+                    todayCostColor = "#ffa502"; // Yellow/Orange
+                } else {
+                    todayCostColor = "#2ed573"; // Green
+                }
+                budgetInfo = `\n\n💰 Budget: ${this.formatCostFull(data.today.cost)} / ${this.formatCostFull(dailyBudget)} (${budgetPct.toFixed(0)}%)`;
+            }
+
             this.todayCost.text = `$(calendar) ${this.formatCostScaled(data.today.cost)}`;
             this.todayCost.tooltip = new vscode.MarkdownString(
-                `**Today's Usage**\n\n` +
+                `**Today's Usage (API Cost)**\n\n` +
                 `💵 Cost: ${this.formatCostFull(data.today.cost)}\n\n` +
                 `🔢 Tokens: ${this.formatNumberFull(data.today.tokens)}\n\n` +
-                `💬 Messages: ${this.formatNumberFull(data.today.messages)}\n\n` +
+                `💬 Messages: ${this.formatNumberFull(data.today.messages)}${budgetInfo}\n\n` +
                 `---\n\n` +
                 `**Comparisons**\n\n` +
                 `📊 vs Yesterday: ${vsYesterday}%\n\n` +
@@ -144,7 +166,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `---\n\n` +
                 `_Click to open Cost_`
             );
-            this.todayCost.color = "#ffa502";
+            this.todayCost.color = todayCostColor;
 
             // Messages - scaled display, full on hover
             this.messages.text = `$(comment-discussion) ${this.formatNumberScaled(data.allTime.messages)}`;

@@ -2,7 +2,7 @@
   "name": "claude-usage-analytics",
   "displayName": "Claude Usage Analytics",
   "description": "Real-time Claude Code usage stats, costs, and analytics in VS Code",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "publisher": "analyticendeavors",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -84,12 +84,22 @@
       {
         "command": "claudeUsage.showTab.personality",
         "title": "Show Claude Analytics - Personality"
+      },
+      {
+        "command": "claudeUsage.exportData",
+        "title": "Export Claude Usage Data",
+        "icon": "$(export)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "claudeUsage.refresh",
+          "when": "view == claudeUsage.dashboard",
+          "group": "navigation"
+        },
+        {
+          "command": "claudeUsage.exportData",
           "when": "view == claudeUsage.dashboard",
           "group": "navigation"
         }
@@ -158,6 +168,27 @@
           "minimum": 0.5,
           "maximum": 24,
           "description": "How long to cache conversation analysis (in hours). Lower = more accurate but slower."
+        },
+        "claudeUsage.dailyBudget": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Daily spending budget in dollars (0 = no budget). Status bar turns yellow at 70%, red at 90%."
+        },
+        "claudeUsage.weeklyBudget": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Weekly spending budget in dollars (0 = no budget)."
+        },
+        "claudeUsage.costAlertThreshold": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Show alert notification when daily cost exceeds this amount (0 = disabled)."
         }
       }
     }
@@ -170,10 +201,12 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.27",
+    "@types/sql.js": "^1.4.9",
     "@types/vscode": "^1.95.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "keytar": "^7.9.0"
+    "keytar": "^7.9.0",
+    "sql.js": "^1.11.0"
   }
 }

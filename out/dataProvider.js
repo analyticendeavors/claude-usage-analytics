@@ -33,770 +33,455 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.initializeDataWithDatabase = initializeDataWithDatabase;
 exports.getDebugStats = getDebugStats;
 exports.getUsageData = getUsageData;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
-function getStatsCachePath() {
-    const homeDir = os.homedir();
-    return path.join(homeDir, '.claude', 'stats-cache.json');
-}
-function getConversationStatsPath() {
-    const homeDir = os.homedir();
-    return path.join(homeDir, '.claude', 'conversation-stats-cache.json');
-}
-// Curse words list (common mild profanity for stats tracking)
-const CURSE_WORDS = new Set([
-    'damn', 'dammit', 'hell', 'crap', 'shit', 'bullshit', 'ass', 'asshole',
-    'fuck', 'fucking', 'fucker', 'wtf', 'bitch', 'bastard', 'piss', 'pissed',
-    'dick', 'dickhead', 'cock', 'dumbass', 'jackass', 'goddamn', 'goddammit',
-    'screw', 'screwed', 'sucks', 'sucked', 'suck', 'bloody', 'bugger', 'arse'
-]);
-function scanConversations() {
-    const stats = {
-        // Language & Expression
-        curseWords: 0,
-        totalWords: 0,
-        longestMessage: 0,
-        questionsAsked: 0,
-        exclamations: 0,
-        thanksCount: 0,
-        sorryCount: 0,
-        emojiCount: 0,
-        capsLockMessages: 0,
-        // Coding Activity
-        codeBlocks: 0,
-        linesOfCode: 0,
-        topLanguages: {},
-        // Request Types
-        requestTypes: {
-            debugging: 0,
-            features: 0,
-            explain: 0,
-            refactor: 0,
-            review: 0,
-            testing: 0
-        },
-        // Sentiment & Mood
-        sentiment: {
-            positive: 0,
-            negative: 0,
-            urgent: 0,
-            confused: 0
-        },
-        // Fun Extras
-        pleaseCount: 0,
-        lolCount: 0,
-        facepalms: 0,
-        celebrationMoments: 0
-    };
-    // Check for cached stats first (cache for 1 hour)
-    const cachePath = getConversationStatsPath();
-    try {
-        if (fs.existsSync(cachePath)) {
-            const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-            const cacheAge = Date.now() - (cacheData.timestamp || 0);
-            if (cacheAge < 3600000) { // 1 hour cache
-                return cacheData.stats;
-            }
-        }
-    }
-    catch (e) {
-        // Cache read failed, continue with scan
-    }
-    const homeDir = os.homedir();
-    const projectsDir = path.join(homeDir, '.claude', 'projects');
-    if (!fs.existsSync(projectsDir)) {
-        return stats;
-    }
-    try {
-        // Scan all JSONL files in projects directory (recursive)
-        const scanDir = (dir) => {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    scanDir(fullPath);
-                }
-                else if (entry.name.endsWith('.jsonl')) {
-                    scanJsonlFile(fullPath, stats);
-                }
-            }
-        };
-        scanDir(projectsDir);
-        // Cache the results
-        try {
-            fs.writeFileSync(cachePath, JSON.stringify({
-                timestamp: Date.now(),
-                stats
-            }));
-        }
-        catch (e) {
-            // Cache write failed, continue
-        }
-    }
-    catch (e) {
-        console.error('Error scanning conversations:', e);
-    }
-    return stats;
-}
-let debugFileCount = 0;
-let debugUserMsgCount = 0;
-let debugTextCount = 0;
-function scanJsonlFile(filePath, stats) {
-    try {
-        const content = fs.readFileSync(filePath, 'utf8');
-        const lines = content.split('\n').filter(line => line.trim());
-        debugFileCount++;
-        for (const line of lines) {
-            try {
-                const entry = JSON.parse(line);
-                // Only analyze user messages (Claude Code format uses type: "user")
-                if (entry.type === 'user' || entry.type === 'human' || entry.role === 'user') {
-                    debugUserMsgCount++;
-                    let text = '';
-                    // Handle different message formats
-                    if (typeof entry.message === 'string') {
-                        text = entry.message;
-                    }
-                    else if (entry.message?.content) {
-                        if (typeof entry.message.content === 'string') {
-                            text = entry.message.content;
-                        }
-                        else if (Array.isArray(entry.message.content)) {
-                            text = entry.message.content
-                                .filter((c) => c.type === 'text')
-                                .map((c) => c.text)
-                                .join(' ');
-                        }
-                    }
-                    else if (entry.content) {
-                        if (typeof entry.content === 'string') {
-                            text = entry.content;
-                        }
-                        else if (Array.isArray(entry.content)) {
-                            text = entry.content
-                                .filter((c) => c.type === 'text')
-                                .map((c) => c.text)
-                                .join(' ');
-                        }
-                    }
-                    if (text) {
-                        debugTextCount++;
-                        analyzeText(text, stats);
-                    }
-                }
-            }
-            catch (e) {
-                // Skip malformed lines
-            }
-        }
-    }
-    catch (e) {
-        // File read error, skip
-    }
-}
-function getDebugStats() {
-    return `Files: ${debugFileCount}, UserMsgs: ${debugUserMsgCount}, TextFound: ${debugTextCount}`;
-}
-function analyzeText(text, stats) {
-    const lowerText = text.toLowerCase();
-    const words = lowerText.split(/\s+/).filter(w => w.length > 0);
-    // ═══════════════════════════════════════════════════════════════
-    // BASIC STATS
-    // ═══════════════════════════════════════════════════════════════
-    stats.totalWords += words.length;
-    if (text.length > stats.longestMessage) {
-        stats.longestMessage = text.length;
-    }
-    // Curse words
-    for (const word of words) {
-        const cleaned = word.replace(/[^a-z]/g, '');
-        if (CURSE_WORDS.has(cleaned)) {
-            stats.curseWords++;
-        }
-    }
-    // Questions & Exclamations
-    stats.questionsAsked += (text.match(/\?/g) || []).length;
-    stats.exclamations += (text.match(/!/g) || []).length;
-    // Thanks & Sorry
-    stats.thanksCount += (lowerText.match(/\b(thanks|thank you|thx|ty|thank)\b/g) || []).length;
-    stats.sorryCount += (lowerText.match(/\b(sorry|apolog|my bad|oops)\b/g) || []).length;
-    // Emojis (common emoji patterns)
-    stats.emojiCount += (text.match(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|:\)|:\(|:D|;-\)|<3|:P|:O|xD/gu) || []).length;
-    // CAPS LOCK detection (frustration indicator) - more than 30% caps in a message > 20 chars
-    if (text.length > 20) {
-        const upperCount = (text.match(/[A-Z]/g) || []).length;
-        const letterCount = (text.match(/[a-zA-Z]/g) || []).length;
-        if (letterCount > 0 && upperCount / letterCount > 0.3) {
-            stats.capsLockMessages++;
-        }
-    }
-    // ═══════════════════════════════════════════════════════════════
-    // CODE ANALYSIS
-    // ═══════════════════════════════════════════════════════════════
-    const codeBlockMatches = text.match(/```(\w*)\n[\s\S]*?```/g) || [];
-    stats.codeBlocks += codeBlockMatches.length;
-    for (const block of codeBlockMatches) {
-        // Extract language from ```language
-        const langMatch = block.match(/```(\w+)/);
-        if (langMatch && langMatch[1]) {
-            const lang = langMatch[1].toLowerCase();
-            stats.topLanguages[lang] = (stats.topLanguages[lang] || 0) + 1;
-        }
-        // Count lines of code
-        const lines = block.split('\n').length - 2;
-        stats.linesOfCode += Math.max(0, lines);
-    }
-    // ═══════════════════════════════════════════════════════════════
-    // REQUEST TYPES
-    // ═══════════════════════════════════════════════════════════════
-    // Debugging requests
-    if (/\b(fix|error|bug|broken|not working|issue|problem|crash|fail|exception|undefined|null)\b/i.test(text)) {
-        stats.requestTypes.debugging++;
-    }
-    // Feature requests
-    if (/\b(add|create|implement|build|make|new|write|generate|develop)\b/i.test(text)) {
-        stats.requestTypes.features++;
-    }
-    // Explanation requests
-    if (/\b(explain|how does|what is|why does|what's|how do|tell me about|understand)\b/i.test(text)) {
-        stats.requestTypes.explain++;
-    }
-    // Refactor requests
-    if (/\b(refactor|improve|optimize|clean|simplify|better|enhance|upgrade)\b/i.test(text)) {
-        stats.requestTypes.refactor++;
-    }
-    // Review requests
-    if (/\b(review|check|look at|thoughts|feedback|opinion|does this look)\b/i.test(text)) {
-        stats.requestTypes.review++;
-    }
-    // Testing requests
-    if (/\b(test|testing|unit test|spec|coverage|mock|stub)\b/i.test(text)) {
-        stats.requestTypes.testing++;
-    }
-    // ═══════════════════════════════════════════════════════════════
-    // SENTIMENT & MOOD
-    // ═══════════════════════════════════════════════════════════════
-    // Positive sentiment
-    if (/\b(great|awesome|perfect|love|nice|excellent|amazing|wonderful|fantastic|brilliant|cool|neat)\b/i.test(text)) {
-        stats.sentiment.positive++;
-    }
-    // Negative sentiment
-    if (/\b(hate|terrible|awful|annoying|frustrated|frustrating|horrible|sucks|stupid|dumb|ridiculous)\b/i.test(text)) {
-        stats.sentiment.negative++;
-    }
-    // Urgency
-    if (/\b(urgent|asap|quickly|hurry|deadline|immediately|emergency|critical|important|priority)\b/i.test(text)) {
-        stats.sentiment.urgent++;
-    }
-    // Confusion
-    if (/\b(confused|don't understand|lost|stuck|no idea|help|struggling|can't figure|not sure)\b/i.test(text)) {
-        stats.sentiment.confused++;
-    }
-    // ═══════════════════════════════════════════════════════════════
-    // FUN EXTRAS
-    // ═══════════════════════════════════════════════════════════════
-    // Politeness
-    stats.pleaseCount += (lowerText.match(/\bplease\b/g) || []).length;
-    // Humor
-    stats.lolCount += (lowerText.match(/\b(lol|lmao|haha|hehe|rofl|😂|🤣)\b/g) || []).length;
-    // Facepalm moments
-    if (/\b(ugh|sigh|facepalm|smh|omg|oh god|oh no|doh|argh)\b/i.test(text)) {
-        stats.facepalms++;
-    }
-    // Celebration moments
-    if (/\b(yay|woo|woohoo|yes!|it works|finally|hell yeah|awesome|nailed it|boom|🎉|✅)\b/i.test(text)) {
-        stats.celebrationMoments++;
-    }
+const database_1 = require("./database");
+// Track if database has been initialized
+let dbInitialized = false;
+// Helper to get local date string (YYYY-MM-DD) without timezone issues
+function getLocalDateString(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 /**
- * Read real-time today's usage directly from conversation JSONL files
+ * Initialize database and import any existing cache data
+ * Called once on extension activation
  */
-function getTodayRealTimeUsage() {
+async function initializeDataWithDatabase() {
     try {
-        const homeDir = os.homedir();
-        const projectsDir = path.join(homeDir, '.claude', 'projects');
-        if (!fs.existsSync(projectsDir))
-            return null;
-        const today = new Date().toISOString().split('T')[0];
-        let inputTokens = 0, outputTokens = 0, cacheCreationTokens = 0, cacheReadTokens = 0, totalMessages = 0;
-        const projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-            .filter(d => d.isDirectory()).map(d => path.join(projectsDir, d.name));
-        for (const projDir of projectDirs) {
-            const files = fs.readdirSync(projDir, { withFileTypes: true })
-                .filter(f => f.isFile() && f.name.endsWith('.jsonl'));
-            for (const file of files) {
-                const filePath = path.join(projDir, file.name);
-                const fileStat = fs.statSync(filePath);
-                if (fileStat.mtime.toISOString().split('T')[0] !== today || fileStat.size === 0)
-                    continue;
-                try {
-                    const content = fs.readFileSync(filePath, 'utf8');
-                    for (const line of content.split('\n').filter(l => l.trim())) {
-                        try {
-                            const entry = JSON.parse(line);
-                            if (entry.type === 'assistant' && entry.message?.usage && entry.timestamp?.startsWith(today)) {
-                                const u = entry.message.usage;
-                                inputTokens += u.input_tokens || 0;
-                                outputTokens += u.output_tokens || 0;
-                                cacheCreationTokens += u.cache_creation_input_tokens || 0;
-                                cacheReadTokens += u.cache_read_input_tokens || 0;
-                                totalMessages++;
-                            }
-                        }
-                        catch { }
-                    }
-                }
-                catch { }
-            }
+        await (0, database_1.initDatabase)();
+        dbInitialized = true;
+        // Read current cache data
+        const statsCachePath = getStatsCachePath();
+        if (fs.existsSync(statsCachePath)) {
+            const statsCache = JSON.parse(fs.readFileSync(statsCachePath, 'utf8'));
+            return await (0, database_1.importFromCache)(statsCache);
         }
-        if (totalMessages === 0)
-            return null;
-        const totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
-        const cost = (inputTokens / 1e6) * 15 + (outputTokens / 1e6) * 75 + (cacheCreationTokens / 1e6) * 18.75 + (cacheReadTokens / 1e6) * 1.50;
-        return { tokens: totalTokens, messages: totalMessages, cost };
+        return { imported: 0, skipped: 0 };
     }
-    catch {
-        return null;
+    catch (error) {
+        console.error('Failed to initialize database:', error);
+        return { imported: 0, skipped: 0 };
     }
 }
+function getStatsCachePath() {
+    return path.join(os.homedir(), '.claude', 'stats-cache.json');
+}
+function getConversationStatsPath() {
+    return path.join(os.homedir(), '.claude', 'conversation-stats-cache.json');
+}
+// Model pricing per 1M tokens
+const MODEL_PRICING = {
+    opus: { input: 15, output: 75, cacheRead: 1.875, cacheWrite: 18.75 },
+    sonnet: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
+    default: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 }
+};
+function getPricingForModel(modelName) {
+    const lower = modelName.toLowerCase();
+    if (lower.includes('opus'))
+        return MODEL_PRICING.opus;
+    if (lower.includes('sonnet'))
+        return MODEL_PRICING.sonnet;
+    return MODEL_PRICING.default;
+}
+/**
+ * Calculate cost for a day using dailyModelTokens (per-model token breakdown)
+ */
+function calculateDayCost(tokensByModel) {
+    let cost = 0;
+    for (const [model, tokens] of Object.entries(tokensByModel)) {
+        const pricing = getPricingForModel(model);
+        // Assume roughly 20% output, 80% input split (approximation from cache data)
+        // For more accuracy, we'd need separate input/output counts per day
+        const avgRate = (pricing.input * 0.3 + pricing.output * 0.1 + pricing.cacheRead * 0.5 + pricing.cacheWrite * 0.1);
+        cost += (tokens / 1000000) * avgRate;
+    }
+    return cost;
+}
+/**
+ * Read cached conversation stats (fast - just reads a JSON file)
+ */
+function getCachedConversationStats() {
+    const defaultStats = {
+        curseWords: 0, totalWords: 0, longestMessage: 0, questionsAsked: 0,
+        exclamations: 0, thanksCount: 0, sorryCount: 0, emojiCount: 0, capsLockMessages: 0,
+        codeBlocks: 0, linesOfCode: 0, topLanguages: {},
+        requestTypes: { debugging: 0, features: 0, explain: 0, refactor: 0, review: 0, testing: 0 },
+        sentiment: { positive: 0, negative: 0, urgent: 0, confused: 0 },
+        pleaseCount: 0, lolCount: 0, facepalms: 0, celebrationMoments: 0
+    };
+    try {
+        const cachePath = getConversationStatsPath();
+        if (fs.existsSync(cachePath)) {
+            const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+            return cacheData.stats || defaultStats;
+        }
+    }
+    catch (e) {
+        // Cache read failed
+    }
+    return defaultStats;
+}
+function getDebugStats() {
+    return 'Cache-only mode - no file scanning';
+}
+/**
+ * Get usage data from cache only - NEVER scans JSONL files
+ * This ensures the extension never blocks VS Code
+ */
 function getUsageData() {
-    // Default data if not available
     const defaultData = {
         limits: {
             session: { percentage: 0, current: 0, limit: 1 },
             weekly: { percentage: 0, current: 0, limit: 1 }
         },
         allTime: {
-            cost: 0,
-            messages: 0,
-            tokens: 0,
-            totalTokens: 0,
-            cacheTokens: 0,
-            dateRange: 'No data',
-            sessions: 0,
-            avgTokensPerMessage: 0,
-            daysActive: 0
+            cost: 0, messages: 0, tokens: 0, totalTokens: 0, cacheTokens: 0,
+            dateRange: 'No data', sessions: 0, avgTokensPerMessage: 0, daysActive: 0, firstUsedDate: ''
         },
-        today: {
-            cost: 0,
-            messages: 0,
-            tokens: 0
-        },
+        today: { cost: 0, messages: 0, tokens: 0 },
         models: [],
         dailyHistory: [],
+        recentSessions: [],
         funStats: {
-            tokensPerDay: 0,
-            costPerDay: 0,
-            streak: 0,
-            peakDay: { date: '', messages: 0 },
-            avgMessagesPerSession: 0,
-            // Phase 2
-            highestDayCost: 0,
-            costTrend: 'stable',
-            projectedMonthlyCost: 0,
-            yesterdayCost: 0,
-            avgDayCost: 0,
-            peakHour: 'N/A',
-            cacheHitRatio: 0,
-            cacheSavings: 0,
-            longestSessionMessages: 0,
-            // Phase 3
-            politenessScore: 0,
-            frustrationIndex: 0,
-            curiosityScore: 0,
-            nightOwlScore: 0,
-            earlyBirdScore: 0,
-            achievements: []
+            tokensPerDay: 0, costPerDay: 0, streak: 0, peakDay: { date: '', messages: 0 },
+            avgMessagesPerSession: 0, highestDayCost: 0, costTrend: 'stable',
+            projectedMonthlyCost: 0, yesterdayCost: 0, avgDayCost: 0, peakHour: 'N/A',
+            cacheHitRatio: 0, cacheSavings: 0, longestSessionMessages: 0,
+            politenessScore: 0, frustrationIndex: 0, curiosityScore: 0,
+            nightOwlScore: 0, earlyBirdScore: 0, weekendScore: 0, achievements: []
         },
-        conversationStats: {
-            curseWords: 0,
-            totalWords: 0,
-            longestMessage: 0,
-            questionsAsked: 0,
-            exclamations: 0,
-            thanksCount: 0,
-            sorryCount: 0,
-            emojiCount: 0,
-            capsLockMessages: 0,
-            codeBlocks: 0,
-            linesOfCode: 0,
-            topLanguages: {},
-            requestTypes: {
-                debugging: 0,
-                features: 0,
-                explain: 0,
-                refactor: 0,
-                review: 0,
-                testing: 0
-            },
-            sentiment: {
-                positive: 0,
-                negative: 0,
-                urgent: 0,
-                confused: 0
-            },
-            pleaseCount: 0,
-            lolCount: 0,
-            facepalms: 0,
-            celebrationMoments: 0
-        }
+        conversationStats: getCachedConversationStats()
     };
     try {
-        // Read stats-cache.json for model usage and stats
         const statsCachePath = getStatsCachePath();
-        if (fs.existsSync(statsCachePath)) {
+        if (!fs.existsSync(statsCachePath))
+            return defaultData;
+        const statsCache = JSON.parse(fs.readFileSync(statsCachePath, 'utf8'));
+        // === BASIC STATS ===
+        defaultData.allTime.messages = statsCache.totalMessages || 0;
+        defaultData.allTime.sessions = statsCache.totalSessions || 0;
+        // === DATE RANGE ===
+        if (statsCache.firstSessionDate && statsCache.lastComputedDate) {
+            const firstDate = statsCache.firstSessionDate.split('T')[0];
+            defaultData.allTime.dateRange = `${firstDate} ~ ${statsCache.lastComputedDate}`;
+            defaultData.allTime.firstUsedDate = firstDate;
+        }
+        // === MODEL USAGE & TOTAL COST ===
+        let totalTokens = 0, totalCacheTokens = 0, totalCost = 0;
+        const models = [];
+        if (statsCache.modelUsage) {
+            let grandTotal = 0;
+            // First pass: calculate totals
+            for (const [modelName, usage] of Object.entries(statsCache.modelUsage)) {
+                const m = usage;
+                const pricing = getPricingForModel(modelName);
+                const input = m.inputTokens || 0;
+                const output = m.outputTokens || 0;
+                const cacheRead = m.cacheReadInputTokens || 0;
+                const cacheWrite = m.cacheCreationInputTokens || 0;
+                totalTokens += input + output;
+                totalCacheTokens += cacheRead + cacheWrite;
+                grandTotal += input + output + cacheRead + cacheWrite;
+                // Calculate cost for this model
+                totalCost += (input / 1000000) * pricing.input;
+                totalCost += (output / 1000000) * pricing.output;
+                totalCost += (cacheRead / 1000000) * pricing.cacheRead;
+                totalCost += (cacheWrite / 1000000) * pricing.cacheWrite;
+                models.push({
+                    name: formatModelName(modelName),
+                    tokens: input + output + cacheRead + cacheWrite,
+                    percentage: 0, // Calculate after we have grandTotal
+                    color: getModelColor(modelName)
+                });
+            }
+            // Second pass: calculate percentages
+            for (const model of models) {
+                model.percentage = grandTotal > 0 ? (model.tokens / grandTotal) * 100 : 0;
+            }
+            defaultData.allTime.cost = totalCost;
+            defaultData.allTime.totalTokens = totalTokens;
+            defaultData.allTime.cacheTokens = totalCacheTokens;
+            defaultData.allTime.tokens = totalTokens + totalCacheTokens;
+            defaultData.models = models.sort((a, b) => b.tokens - a.tokens).slice(0, 5);
+            // Cache efficiency
+            const totalInput = Object.values(statsCache.modelUsage)
+                .reduce((sum, m) => sum + (m.inputTokens || 0), 0);
+            const totalCacheRead = Object.values(statsCache.modelUsage)
+                .reduce((sum, m) => sum + (m.cacheReadInputTokens || 0), 0);
+            if (totalInput + totalCacheRead > 0) {
+                defaultData.funStats.cacheHitRatio = Math.round((totalCacheRead / (totalInput + totalCacheRead)) * 100);
+                // Savings = cache tokens * (regular price - cache price)
+                defaultData.funStats.cacheSavings = (totalCacheRead / 1000000) * (15 - 1.875); // Opus savings
+            }
+        }
+        // === DAILY HISTORY (from dailyActivity + dailyModelTokens) ===
+        const todayStr = getLocalDateString();
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayStr = getLocalDateString(yesterdayDate);
+        // Build a map of date -> tokens by model for accurate cost calculation
+        const dailyTokensMap = {};
+        if (statsCache.dailyModelTokens && Array.isArray(statsCache.dailyModelTokens)) {
+            for (const day of statsCache.dailyModelTokens) {
+                if (day.date && day.tokensByModel) {
+                    dailyTokensMap[day.date] = day.tokensByModel;
+                }
+            }
+        }
+        // Build daily history with accurate costs
+        let peakMessages = 0, peakDate = '', highestCost = 0;
+        const daysWithActivity = new Set();
+        if (statsCache.dailyActivity && Array.isArray(statsCache.dailyActivity)) {
+            for (const day of statsCache.dailyActivity.slice(-90)) { // Last 90 days
+                const messages = day.messageCount || 0;
+                const tokensByModel = dailyTokensMap[day.date] || {};
+                const dayTokens = Object.values(tokensByModel).reduce((sum, t) => sum + (t || 0), 0);
+                const cost = calculateDayCost(tokensByModel);
+                defaultData.dailyHistory.push({
+                    date: day.date,
+                    messages,
+                    tokens: dayTokens,
+                    cost
+                });
+                if (messages > 0)
+                    daysWithActivity.add(day.date);
+                if (messages > peakMessages) {
+                    peakMessages = messages;
+                    peakDate = day.date;
+                }
+                if (cost > highestCost)
+                    highestCost = cost;
+                // Today's data
+                if (day.date === todayStr) {
+                    defaultData.today.messages = messages;
+                    defaultData.today.tokens = dayTokens;
+                    defaultData.today.cost = cost;
+                }
+                // Yesterday's cost
+                if (day.date === yesterdayStr) {
+                    defaultData.funStats.yesterdayCost = cost;
+                }
+            }
+            defaultData.funStats.peakDay = { date: peakDate, messages: peakMessages };
+            defaultData.funStats.highestDayCost = highestCost;
+            defaultData.allTime.daysActive = statsCache.dailyActivity.length;
+        }
+        // === MERGE SQLITE HISTORICAL DATA ===
+        if (dbInitialized) {
             try {
-                const statsCache = JSON.parse(fs.readFileSync(statsCachePath, 'utf8'));
-                // Total messages and sessions
-                defaultData.allTime.messages = statsCache.totalMessages || 0;
-                // Calculate total tokens from model usage
-                let totalTokens = 0;
-                let totalCacheTokens = 0;
-                const models = [];
-                if (statsCache.modelUsage) {
-                    // First pass: calculate total
-                    let grandTotal = 0;
-                    for (const [, usage] of Object.entries(statsCache.modelUsage)) {
-                        const modelData = usage;
-                        grandTotal += (modelData.inputTokens || 0) + (modelData.outputTokens || 0) +
-                            (modelData.cacheReadInputTokens || 0) + (modelData.cacheCreationInputTokens || 0);
+                // Get historical data from SQLite
+                const sqliteSnapshots = (0, database_1.getAllDailySnapshots)();
+                // Create a set of dates we already have from cache
+                const cacheDates = new Set(defaultData.dailyHistory.map(d => d.date));
+                // Add historical days from SQLite that aren't in the cache
+                const historicalDays = [];
+                for (const snapshot of sqliteSnapshots) {
+                    if (!cacheDates.has(snapshot.date)) {
+                        historicalDays.push({
+                            date: snapshot.date,
+                            cost: snapshot.cost,
+                            messages: snapshot.messages,
+                            tokens: snapshot.tokens
+                        });
+                        // Update peak stats if historical data has higher values
+                        if (snapshot.messages > peakMessages) {
+                            peakMessages = snapshot.messages;
+                            peakDate = snapshot.date;
+                        }
+                        if (snapshot.cost > highestCost) {
+                            highestCost = snapshot.cost;
+                        }
+                        if (snapshot.messages > 0) {
+                            daysWithActivity.add(snapshot.date);
+                        }
                     }
-                    for (const [modelName, usage] of Object.entries(statsCache.modelUsage)) {
-                        const modelData = usage;
-                        const inputTokens = modelData.inputTokens || 0;
-                        const outputTokens = modelData.outputTokens || 0;
-                        const cacheRead = modelData.cacheReadInputTokens || 0;
-                        const cacheWrite = modelData.cacheCreationInputTokens || 0;
-                        const modelTokens = inputTokens + outputTokens;
-                        totalTokens += modelTokens;
-                        totalCacheTokens += cacheRead + cacheWrite;
-                        const modelTotal = modelTokens + cacheRead + cacheWrite;
-                        models.push({
-                            name: formatModelName(modelName),
-                            tokens: modelTotal,
-                            percentage: grandTotal > 0 ? (modelTotal / grandTotal) * 100 : 0,
-                            color: getModelColor(modelName)
+                }
+                // Combine historical + cache data, sorted by date
+                if (historicalDays.length > 0) {
+                    defaultData.dailyHistory = [...historicalDays, ...defaultData.dailyHistory]
+                        .sort((a, b) => a.date.localeCompare(b.date));
+                    // Update lifetime stats with full historical data
+                    const dbStats = (0, database_1.getTotalStats)();
+                    const oldestDbDate = (0, database_1.getOldestDate)();
+                    if (oldestDbDate && (!defaultData.allTime.firstUsedDate || oldestDbDate < defaultData.allTime.firstUsedDate)) {
+                        defaultData.allTime.firstUsedDate = oldestDbDate;
+                        // Update date range
+                        if (statsCache.lastComputedDate) {
+                            defaultData.allTime.dateRange = `${oldestDbDate} ~ ${statsCache.lastComputedDate}`;
+                        }
+                    }
+                    // Merge totals: SQLite historical + cache current
+                    // For cost/messages/tokens, use the higher of (cache total) or (SQLite total)
+                    // because cache has current data and SQLite has historical
+                    if (dbStats.totalCost > defaultData.allTime.cost) {
+                        defaultData.allTime.cost = dbStats.totalCost;
+                    }
+                    if (dbStats.totalMessages > defaultData.allTime.messages) {
+                        defaultData.allTime.messages = dbStats.totalMessages;
+                    }
+                    if (dbStats.totalTokens > defaultData.allTime.tokens) {
+                        defaultData.allTime.tokens = dbStats.totalTokens;
+                    }
+                    if (dbStats.daysCount > defaultData.allTime.daysActive) {
+                        defaultData.allTime.daysActive = dbStats.daysCount;
+                    }
+                    // Update fun stats with merged data
+                    defaultData.funStats.peakDay = { date: peakDate, messages: peakMessages };
+                    defaultData.funStats.highestDayCost = highestCost;
+                }
+                // Persist current cache data to SQLite (new days only)
+                for (const day of defaultData.dailyHistory) {
+                    // Only save days from the cache that SQLite doesn't have
+                    const sqliteHasDate = sqliteSnapshots.some(s => s.date === day.date);
+                    if (!sqliteHasDate || day.date === todayStr) {
+                        // Save today always (may have updated data), save other new days
+                        (0, database_1.saveDailySnapshot)({
+                            date: day.date,
+                            cost: day.cost,
+                            messages: day.messages,
+                            tokens: day.tokens,
+                            sessions: 0 // Not tracked at day level in cache
                         });
                     }
                 }
-                defaultData.allTime.totalTokens = totalTokens;
-                defaultData.allTime.cacheTokens = totalCacheTokens;
-                defaultData.allTime.tokens = totalTokens + totalCacheTokens;
-                defaultData.models = models.sort((a, b) => b.tokens - a.tokens).slice(0, 5);
-                // Sessions count
-                defaultData.allTime.sessions = statsCache.totalSessions || 0;
-                // Date range from first session
-                if (statsCache.firstSessionDate && statsCache.lastComputedDate) {
-                    const firstDate = statsCache.firstSessionDate.split('T')[0];
-                    const lastDate = statsCache.lastComputedDate;
-                    defaultData.allTime.dateRange = `${firstDate} ~ ${lastDate}`;
-                }
-                // Today's data - try real-time from JSONL files first
-                const realTimeToday = getTodayRealTimeUsage();
-                if (realTimeToday) {
-                    defaultData.today.tokens = realTimeToday.tokens;
-                    defaultData.today.messages = realTimeToday.messages;
-                    defaultData.today.cost = realTimeToday.cost;
+                // Save changes to disk
+                (0, database_1.saveDatabase)();
+            }
+            catch (dbError) {
+                console.error('Error merging SQLite data:', dbError);
+            }
+        }
+        // === STREAK CALCULATION ===
+        let streak = 0;
+        if (daysWithActivity.has(todayStr) || daysWithActivity.has(yesterdayStr)) {
+            const checkDate = new Date();
+            for (let i = 0; i < 365; i++) {
+                if (daysWithActivity.has(getLocalDateString(checkDate))) {
+                    streak++;
+                    checkDate.setDate(checkDate.getDate() - 1);
                 }
                 else {
-                    // Fallback to cached data only if real-time not available
-                    if (statsCache.dailyActivity && Array.isArray(statsCache.dailyActivity)) {
-                        const today = new Date().toISOString().split('T')[0];
-                        const targetData = statsCache.dailyActivity.find((d) => d.date === today);
-                        if (targetData) {
-                            defaultData.today.messages = targetData.messageCount || 0;
-                        }
-                    }
-                    if (statsCache.dailyModelTokens && Array.isArray(statsCache.dailyModelTokens)) {
-                        const today = new Date().toISOString().split('T')[0];
-                        const targetTokens = statsCache.dailyModelTokens.find((d) => d.date === today);
-                        if (targetTokens && targetTokens.tokensByModel) {
-                            defaultData.today.tokens = Object.values(targetTokens.tokensByModel)
-                                .reduce((sum, t) => sum + (t || 0), 0);
-                        }
-                    }
-                }
-                // Build daily history for charts (last 14 days)
-                if (statsCache.dailyActivity && Array.isArray(statsCache.dailyActivity)) {
-                    const dailyData = statsCache.dailyActivity;
-                    const last14Days = dailyData.slice(-14);
-                    // Find peak day
-                    let peakMessages = 0;
-                    let peakDate = '';
-                    for (const day of last14Days) {
-                        const messages = day.messageCount || 0;
-                        const tokens = day.totalTokens || 0;
-                        const cost = (tokens / 1000000) * 10;
-                        defaultData.dailyHistory.push({
-                            date: day.date,
-                            messages,
-                            tokens,
-                            cost
-                        });
-                        if (messages > peakMessages) {
-                            peakMessages = messages;
-                            peakDate = day.date;
-                        }
-                    }
-                    defaultData.funStats.peakDay = { date: peakDate, messages: peakMessages };
-                    defaultData.allTime.daysActive = dailyData.length;
-                    // Calculate streak (consecutive days with activity)
-                    // Sort daily data by date descending to find most recent active day
-                    const sortedDays = [...dailyData]
-                        .filter((d) => d.messageCount > 0)
-                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                    let streak = 0;
-                    if (sortedDays.length > 0) {
-                        // Start from most recent active day
-                        const mostRecentDate = new Date(sortedDays[0].date);
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        mostRecentDate.setHours(0, 0, 0, 0);
-                        // Only count streak if most recent activity was today or yesterday
-                        const daysSinceLastActivity = Math.floor((today.getTime() - mostRecentDate.getTime()) / (1000 * 60 * 60 * 24));
-                        if (daysSinceLastActivity <= 1) {
-                            // Count consecutive days backwards from most recent
-                            for (let i = 0; i < 365; i++) {
-                                const checkDate = new Date(mostRecentDate);
-                                checkDate.setDate(checkDate.getDate() - i);
-                                const dateStr = checkDate.toISOString().split('T')[0];
-                                const hasActivity = dailyData.some((d) => d.date === dateStr && d.messageCount > 0);
-                                if (hasActivity) {
-                                    streak++;
-                                }
-                                else {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    defaultData.funStats.streak = streak;
-                    // Store daily data reference for later cost calculations
-                    // We'll calculate costs after we know the blended rate
-                    defaultData._dailyData = dailyData;
-                }
-                // Peak hour from hourCounts
-                if (statsCache.hourCounts) {
-                    const hours = Object.entries(statsCache.hourCounts);
-                    if (hours.length > 0) {
-                        hours.sort((a, b) => b[1] - a[1]);
-                        const peakHourNum = parseInt(hours[0][0]);
-                        const ampm = peakHourNum >= 12 ? 'PM' : 'AM';
-                        const hour12 = peakHourNum % 12 || 12;
-                        defaultData.funStats.peakHour = `${hour12} ${ampm}`;
-                        // Night owl (9pm-4am) and early bird (5am-8am) scores
-                        const totalHourMessages = hours.reduce((sum, h) => sum + h[1], 0);
-                        let nightOwlMessages = 0;
-                        let earlyBirdMessages = 0;
-                        for (const [hourStr, count] of hours) {
-                            const h = parseInt(hourStr);
-                            if (h >= 21 || h <= 4)
-                                nightOwlMessages += count;
-                            if (h >= 5 && h <= 8)
-                                earlyBirdMessages += count;
-                        }
-                        defaultData.funStats.nightOwlScore = totalHourMessages > 0
-                            ? Math.round((nightOwlMessages / totalHourMessages) * 100) : 0;
-                        defaultData.funStats.earlyBirdScore = totalHourMessages > 0
-                            ? Math.round((earlyBirdMessages / totalHourMessages) * 100) : 0;
-                    }
-                }
-                // Longest session messages
-                if (statsCache.longestSession) {
-                    defaultData.funStats.longestSessionMessages = statsCache.longestSession.messageCount || 0;
-                }
-                // Calculate fun stats
-                const totalAllTokens = totalTokens + totalCacheTokens;
-                if (defaultData.allTime.daysActive > 0) {
-                    defaultData.funStats.tokensPerDay = Math.round(totalAllTokens / defaultData.allTime.daysActive);
-                    // costPerDay will be calculated after we know total cost
-                }
-                if (defaultData.allTime.messages > 0) {
-                    defaultData.allTime.avgTokensPerMessage = Math.round(totalAllTokens / defaultData.allTime.messages);
-                }
-                if (defaultData.allTime.sessions > 0) {
-                    defaultData.funStats.avgMessagesPerSession = Math.round(defaultData.allTime.messages / defaultData.allTime.sessions);
-                }
-                // Calculate costs using actual Claude Opus 4.5 pricing
-                // Opus 4.5: $15/M input, $75/M output, $1.875/M cache read, $18.75/M cache write
-                if (statsCache.modelUsage) {
-                    let totalCost = 0;
-                    for (const [modelName, usage] of Object.entries(statsCache.modelUsage)) {
-                        const modelData = usage;
-                        const isOpus = modelName.toLowerCase().includes('opus');
-                        const isSonnet = modelName.toLowerCase().includes('sonnet');
-                        // Pricing per 1M tokens
-                        let inputPrice, outputPrice, cacheReadPrice, cacheWritePrice;
-                        if (isOpus) {
-                            inputPrice = 15;
-                            outputPrice = 75;
-                            cacheReadPrice = 1.875;
-                            cacheWritePrice = 18.75;
-                        }
-                        else if (isSonnet) {
-                            inputPrice = 3;
-                            outputPrice = 15;
-                            cacheReadPrice = 0.30;
-                            cacheWritePrice = 3.75;
-                        }
-                        else {
-                            // Default to Sonnet pricing for unknown models
-                            inputPrice = 3;
-                            outputPrice = 15;
-                            cacheReadPrice = 0.30;
-                            cacheWritePrice = 3.75;
-                        }
-                        const inputTokens = modelData.inputTokens || 0;
-                        const outputTokens = modelData.outputTokens || 0;
-                        const cacheRead = modelData.cacheReadInputTokens || 0;
-                        const cacheWrite = modelData.cacheCreationInputTokens || 0;
-                        totalCost += (inputTokens / 1000000) * inputPrice;
-                        totalCost += (outputTokens / 1000000) * outputPrice;
-                        totalCost += (cacheRead / 1000000) * cacheReadPrice;
-                        totalCost += (cacheWrite / 1000000) * cacheWritePrice;
-                    }
-                    defaultData.allTime.cost = totalCost;
-                    // Now calculate costPerDay using actual cost
-                    if (defaultData.allTime.daysActive > 0) {
-                        defaultData.funStats.costPerDay = totalCost / defaultData.allTime.daysActive;
-                        defaultData.funStats.avgDayCost = defaultData.funStats.costPerDay;
-                        // Projected monthly = avg daily * 30
-                        defaultData.funStats.projectedMonthlyCost = defaultData.funStats.costPerDay * 30;
-                    }
-                    // Cache hit ratio and savings
-                    // Cache reads are much cheaper than regular input tokens
-                    // Opus: $15/M input vs $1.875/M cache read = ~87.5% savings
-                    let totalCacheRead = 0;
-                    let totalInput = 0;
-                    for (const [, usage] of Object.entries(statsCache.modelUsage)) {
-                        const modelData = usage;
-                        totalCacheRead += modelData.cacheReadInputTokens || 0;
-                        totalInput += modelData.inputTokens || 0;
-                    }
-                    const totalInputAndCache = totalInput + totalCacheRead;
-                    if (totalInputAndCache > 0) {
-                        defaultData.funStats.cacheHitRatio = Math.round((totalCacheRead / totalInputAndCache) * 100);
-                        // Savings = (cache tokens * regular price - cache tokens * cache price)
-                        // Using Opus pricing: $15/M vs $1.875/M = $13.125/M saved per cache token
-                        defaultData.funStats.cacheSavings = (totalCacheRead / 1000000) * 13.125;
-                    }
-                    // Calculate blended rate (actual cost per 1M tokens)
-                    const totalAllTokens = defaultData.allTime.tokens + defaultData.allTime.cacheTokens;
-                    const blendedRate = totalAllTokens > 0 ? (totalCost / (totalAllTokens / 1000000)) : 20;
-                    // Now calculate daily costs using dailyModelTokens for accuracy
-                    const dailyModelTokens = statsCache.dailyModelTokens;
-                    const dailyActivity = defaultData._dailyData;
-                    // Build a map of date -> tokens from dailyModelTokens
-                    const tokensByDate = {};
-                    if (dailyModelTokens && dailyModelTokens.length > 0) {
-                        for (const day of dailyModelTokens) {
-                            if (day.date && day.tokensByModel) {
-                                const dayTotal = Object.values(day.tokensByModel)
-                                    .reduce((sum, t) => sum + (t || 0), 0);
-                                tokensByDate[day.date] = dayTotal;
-                            }
-                        }
-                    }
-                    // Calculate highest day and yesterday's cost
-                    let highestCost = 0;
-                    for (const [, tokens] of Object.entries(tokensByDate)) {
-                        const dayCost = (tokens / 1000000) * blendedRate;
-                        if (dayCost > highestCost) {
-                            highestCost = dayCost;
-                        }
-                    }
-                    defaultData.funStats.highestDayCost = highestCost;
-                    // Yesterday's cost
-                    const yesterday = new Date();
-                    yesterday.setDate(yesterday.getDate() - 1);
-                    const yesterdayStr = yesterday.toISOString().split('T')[0];
-                    if (tokensByDate[yesterdayStr]) {
-                        defaultData.funStats.yesterdayCost = (tokensByDate[yesterdayStr] / 1000000) * blendedRate;
-                    }
-                    // 7-day cost trend using dailyActivity for date list
-                    if (dailyActivity && dailyActivity.length >= 7) {
-                        const last7Dates = dailyActivity.slice(-7).map((d) => d.date);
-                        const prev7Dates = dailyActivity.slice(-14, -7).map((d) => d.date);
-                        const last7Cost = last7Dates.reduce((sum, date) => sum + ((tokensByDate[date] || 0) / 1000000) * blendedRate, 0);
-                        const prev7Cost = prev7Dates.reduce((sum, date) => sum + ((tokensByDate[date] || 0) / 1000000) * blendedRate, 0);
-                        if (prev7Cost > 0) {
-                            if (last7Cost > prev7Cost * 1.1) {
-                                defaultData.funStats.costTrend = 'up';
-                            }
-                            else if (last7Cost < prev7Cost * 0.9) {
-                                defaultData.funStats.costTrend = 'down';
-                            }
-                            else {
-                                defaultData.funStats.costTrend = 'stable';
-                            }
-                        }
-                    }
-                    delete defaultData._dailyData; // Clean up temp data
-                    // Today's cost estimate using blended rate
-                    defaultData.today.cost = (defaultData.today.tokens / 1000000) * blendedRate;
+                    break;
                 }
             }
-            catch (e) {
-                console.error('Error parsing stats-cache.json:', e);
+        }
+        defaultData.funStats.streak = streak;
+        // === WEEKEND SCORE ===
+        let weekendMessages = 0, totalDailyMessages = 0;
+        for (const day of defaultData.dailyHistory) {
+            const date = new Date(day.date + 'T12:00:00'); // Noon to avoid timezone issues
+            const dayOfWeek = date.getDay();
+            totalDailyMessages += day.messages;
+            if (dayOfWeek === 0 || dayOfWeek === 6)
+                weekendMessages += day.messages;
+        }
+        defaultData.funStats.weekendScore = totalDailyMessages > 0
+            ? Math.round((weekendMessages / totalDailyMessages) * 100) : 0;
+        // === PEAK HOUR ===
+        if (statsCache.hourCounts) {
+            const hours = Object.entries(statsCache.hourCounts);
+            if (hours.length > 0) {
+                hours.sort((a, b) => b[1] - a[1]);
+                const peakHourNum = parseInt(hours[0][0]);
+                const ampm = peakHourNum >= 12 ? 'PM' : 'AM';
+                const hour12 = peakHourNum % 12 || 12;
+                defaultData.funStats.peakHour = `${hour12} ${ampm}`;
+                // Night owl & early bird
+                const totalHourMsgs = hours.reduce((sum, h) => sum + h[1], 0);
+                let nightOwl = 0, earlyBird = 0;
+                for (const [h, count] of hours) {
+                    const hr = parseInt(h);
+                    if (hr >= 21 || hr <= 4)
+                        nightOwl += count;
+                    if (hr >= 5 && hr <= 8)
+                        earlyBird += count;
+                }
+                defaultData.funStats.nightOwlScore = totalHourMsgs > 0 ? Math.round((nightOwl / totalHourMsgs) * 100) : 0;
+                defaultData.funStats.earlyBirdScore = totalHourMsgs > 0 ? Math.round((earlyBird / totalHourMsgs) * 100) : 0;
             }
         }
-        // Scan conversations for fun stats (cached for 1 hour)
-        try {
-            defaultData.conversationStats = scanConversations();
-            // Calculate personality scores based on conversation stats
-            const cs = defaultData.conversationStats;
-            const totalMessages = defaultData.allTime.messages || 1;
-            // Politeness: (please + thanks) / messages * 100
-            defaultData.funStats.politenessScore = Math.round(((cs.pleaseCount + cs.thanksCount) / totalMessages) * 100 * 10) / 10; // One decimal
-            // Frustration: (curses + facepalms + caps) / messages * 100
-            defaultData.funStats.frustrationIndex = Math.round(((cs.curseWords + cs.facepalms + cs.capsLockMessages) / totalMessages) * 100 * 10) / 10;
-            // Curiosity: questions / messages * 100
-            defaultData.funStats.curiosityScore = Math.round((cs.questionsAsked / totalMessages) * 100 * 10) / 10;
-            // Calculate achievements
-            const achievements = [];
-            // Message milestones
-            if (totalMessages >= 10000)
-                achievements.push('🏆 Legend (10K+ msgs)');
-            else if (totalMessages >= 1000)
-                achievements.push('⭐ Power User (1K+ msgs)');
-            else if (totalMessages >= 100)
-                achievements.push('🌱 Getting Started');
-            // Politeness
-            if (defaultData.funStats.politenessScore >= 5)
-                achievements.push('🎩 Polite Programmer');
-            // Time patterns
-            if (defaultData.funStats.nightOwlScore >= 30)
-                achievements.push('🦉 Night Owl');
-            if (defaultData.funStats.earlyBirdScore >= 30)
-                achievements.push('🐦 Early Bird');
-            // Coding
-            if (cs.linesOfCode >= 10000)
-                achievements.push('💻 Code Machine');
-            else if (cs.linesOfCode >= 1000)
-                achievements.push('⌨️ Prolific Coder');
-            // Mood
-            if (cs.curseWords >= 100)
-                achievements.push('🤬 Potty Mouth');
-            if (defaultData.funStats.frustrationIndex < 1 && totalMessages >= 100)
-                achievements.push('😌 Chill Vibes');
-            if (cs.celebrationMoments >= 20)
-                achievements.push('🎉 Celebrator');
-            // Streak
-            if (defaultData.funStats.streak >= 7)
-                achievements.push('🔥 Week Streak');
-            if (defaultData.funStats.streak >= 30)
-                achievements.push('🌟 Month Streak');
-            // Cache efficiency
-            if (defaultData.funStats.cacheHitRatio >= 90)
-                achievements.push('💰 Cache Master');
-            defaultData.funStats.achievements = achievements;
+        // === LONGEST SESSION ===
+        if (statsCache.longestSession) {
+            defaultData.funStats.longestSessionMessages = statsCache.longestSession.messageCount || 0;
         }
-        catch (e) {
-            console.error('Error scanning conversations:', e);
+        // === DERIVED STATS ===
+        const daysActive = defaultData.allTime.daysActive || 1;
+        defaultData.funStats.tokensPerDay = Math.round(defaultData.allTime.tokens / daysActive);
+        defaultData.funStats.costPerDay = totalCost / daysActive;
+        defaultData.funStats.avgDayCost = defaultData.funStats.costPerDay;
+        defaultData.funStats.projectedMonthlyCost = defaultData.funStats.costPerDay * 30;
+        if (defaultData.allTime.messages > 0) {
+            defaultData.allTime.avgTokensPerMessage = Math.round(defaultData.allTime.tokens / defaultData.allTime.messages);
         }
+        if (defaultData.allTime.sessions > 0) {
+            defaultData.funStats.avgMessagesPerSession = Math.round(defaultData.allTime.messages / defaultData.allTime.sessions);
+        }
+        // === 7-DAY COST TREND ===
+        if (defaultData.dailyHistory.length >= 14) {
+            const last7 = defaultData.dailyHistory.slice(-7).reduce((sum, d) => sum + d.cost, 0);
+            const prev7 = defaultData.dailyHistory.slice(-14, -7).reduce((sum, d) => sum + d.cost, 0);
+            if (prev7 > 0) {
+                if (last7 > prev7 * 1.1)
+                    defaultData.funStats.costTrend = 'up';
+                else if (last7 < prev7 * 0.9)
+                    defaultData.funStats.costTrend = 'down';
+            }
+        }
+        // === PERSONALITY SCORES ===
+        const cs = defaultData.conversationStats;
+        const totalMessages = defaultData.allTime.messages || 1;
+        defaultData.funStats.politenessScore = Math.round(((cs.pleaseCount + cs.thanksCount) / totalMessages) * 1000) / 10;
+        defaultData.funStats.frustrationIndex = Math.round(((cs.curseWords + cs.facepalms + cs.capsLockMessages) / totalMessages) * 1000) / 10;
+        defaultData.funStats.curiosityScore = Math.round((cs.questionsAsked / totalMessages) * 1000) / 10;
+        // === ACHIEVEMENTS ===
+        const achievements = [];
+        if (totalMessages >= 10000)
+            achievements.push('Legend (10K+ msgs)');
+        else if (totalMessages >= 1000)
+            achievements.push('Power User (1K+ msgs)');
+        else if (totalMessages >= 100)
+            achievements.push('Getting Started');
+        if (defaultData.funStats.politenessScore >= 5)
+            achievements.push('Polite Programmer');
+        if (defaultData.funStats.nightOwlScore >= 30)
+            achievements.push('Night Owl');
+        if (defaultData.funStats.earlyBirdScore >= 30)
+            achievements.push('Early Bird');
+        if (cs.linesOfCode >= 10000)
+            achievements.push('Code Machine');
+        else if (cs.linesOfCode >= 1000)
+            achievements.push('Prolific Coder');
+        if (cs.curseWords >= 100)
+            achievements.push('Potty Mouth');
+        if (defaultData.funStats.frustrationIndex < 1 && totalMessages >= 100)
+            achievements.push('Chill Vibes');
+        if (cs.celebrationMoments >= 20)
+            achievements.push('Celebrator');
+        if (streak >= 30)
+            achievements.push('Month Streak');
+        else if (streak >= 7)
+            achievements.push('Week Streak');
+        if (defaultData.funStats.cacheHitRatio >= 90)
+            achievements.push('Cache Master');
+        if (defaultData.allTime.tokens >= 1000000000)
+            achievements.push('Token Titan (1B+)');
+        if (totalCost >= 10000)
+            achievements.push('$10K Whale');
+        else if (totalCost >= 5000)
+            achievements.push('$5K Spender');
+        else if (totalCost >= 1000)
+            achievements.push('$1K Club');
+        if (cs.requestTypes.refactor >= 50)
+            achievements.push('Refactor King');
+        else if (cs.requestTypes.refactor >= 20)
+            achievements.push('Refactor Pro');
+        if (defaultData.funStats.weekendScore >= 50)
+            achievements.push('Weekend Warrior');
+        defaultData.funStats.achievements = achievements;
         return defaultData;
     }
     catch (error) {

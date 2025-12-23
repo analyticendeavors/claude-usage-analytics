@@ -1,10 +1,14 @@
 # Claude Usage Analytics
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.95%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)
+
+---
+
+> **Inspired by [Claude Goblin](https://github.com/data-goblin/claude-goblin)** by [Kurt Buhler](https://github.com/data-goblin) - A brilliant tool for analyzing Claude usage data. Kurt's innovative approach to persisting usage history beyond Claude Code's rolling 30-day window directly inspired the SQLite persistence feature in this extension. Check out his work!
 
 ---
 
@@ -123,7 +127,8 @@ This extension prioritizes your privacy:
 | **Open Source** | Full source code available for audit |
 
 **Data Sources:**
-- `~/.claude/stats-cache.json` — Token usage and model statistics
+- `~/.claude/stats-cache.json` — Token usage and model statistics (Claude Code's rolling 30-day window)
+- `~/.claude/analytics.db` — **NEW:** SQLite database preserving your full usage history forever
 - `~/.claude/projects/*/` — Conversation history for personality analysis and real-time today's cost
 - `~/.claude/.credentials.json` — Subscription tier information (read-only)
 
@@ -156,7 +161,7 @@ npm run compile
 npx vsce package
 
 # Install the generated .vsix
-code --install-extension claude-usage-analytics-1.0.2.vsix
+code --install-extension claude-usage-analytics-1.1.0.vsix
 ```
 
 ---
@@ -221,6 +226,7 @@ claude-usage-analytics/
 │   ├── statusBar.ts        # 7 status bar widgets with tooltips
 │   ├── dashboardView.ts    # 4-tab webview dashboard
 │   ├── dataProvider.ts     # Stats parsing, cost calculations & real-time today
+│   ├── database.ts         # SQLite persistence for historical data
 │   └── limitsProvider.ts   # Subscription tier from credentials
 ├── out/                    # Compiled JavaScript
 ├── media/
@@ -324,7 +330,20 @@ npx vsce package   # Create .vsix package
 
 ## Changelog
 
-### v1.0.2 (2025-12-21)
+### v1.1.0 (2025-12-22)
+- **SQLite persistence**: Your usage history is now preserved forever in a local SQLite database, surviving Claude Code's 30-day rolling window
+- **Historical data import**: On first install, automatically imports existing data from stats-cache.json
+- **Improved lifetime stats**: Lifetime totals now include full historical data, not just the last 30 days
+- **7 new achievements**: Token Titan (1M+ tokens), $100 Club, $500 Spender, $1K Whale, Refactor Pro, Refactor King, Weekend Warrior
+- **Export to CSV/JSON**: Export your usage data via dashboard button or view title menu
+- **Budget tracking**: New `dailyBudget` and `weeklyBudget` settings with status bar color coding (green/yellow/red)
+- **Cost alerts**: New `costAlertThreshold` setting triggers VS Code notifications when daily cost exceeds threshold
+- **Date range filter**: Filter dashboard stats by Last 7 days, Last 30 days, This Month, or All Time
+- **Session breakdown**: New section in Messages tab showing recent sessions with project, messages, tokens, and cost
+- **Activity heatmap**: GitHub-style contribution calendar on Personality tab showing last 90 days of activity
+- **Theme-aware colors**: All UI elements now adapt to light and dark VS Code themes
+
+### v1.0.3 (2025-12-21)
 - **Real-time today's cost**: Now reads directly from conversation JSONL files for accurate current-day statistics
 - **Subscription tier display**: Shows Max 20x, Max, Pro, or Free tier instead of rate limit percentages
 - **Fully offline**: Removed all network API calls — extension operates completely locally
