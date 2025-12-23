@@ -102,26 +102,24 @@ export class StatusBarManager implements vscode.Disposable {
             // Cache-only mode - always instant
             const data = getUsageData();
 
-            // Lifetime cost - scaled display, full on hover
+            // Account Total cost - scaled display, full on hover
             const trendArrow = data.funStats.costTrend === 'up' ? '📈' :
                 data.funStats.costTrend === 'down' ? '📉' : '➡️';
-            this.lifetimeCost.text = `$(graph) ${this.formatCostScaled(data.allTime.cost)}`;
+            const acct = data.accountTotal;
+            const last14 = data.last14Days;
+            this.lifetimeCost.text = `$(graph) ${this.formatCostScaled(acct.cost)}`;
             this.lifetimeCost.tooltip = new vscode.MarkdownString(
-                `**API Cost Equivalent (Local History)**\n\n` +
-                `💰 Total: ${this.formatCostFull(data.allTime.cost)}\n\n` +
-                `_Based on per-token API rates, not subscription cost_\n\n` +
+                `**Account Total (Lifetime)**\n\n` +
+                `💰 Total: ${this.formatCostFull(acct.cost)}\n\n` +
+                `🔢 Tokens: ${this.formatNumberFull(acct.tokens)}\n\n` +
+                `💬 Messages: ${this.formatNumberFull(acct.messages)}\n\n` +
+                `📊 Sessions: ${this.formatNumberFull(acct.sessions)}\n\n` +
                 `---\n\n` +
-                `📊 Sessions: ${this.formatNumberFull(data.allTime.sessions)}\n\n` +
-                `📅 Days Active: ${data.allTime.daysActive}\n\n` +
-                `📆 ${data.allTime.dateRange}\n\n` +
-                `---\n\n` +
-                `**Cost Insights**\n\n` +
+                `**Last 14 Days**\n\n` +
                 `${trendArrow} 7-day trend: ${data.funStats.costTrend}\n\n` +
-                `🏆 Highest day: ${this.formatCostFull(data.funStats.highestDayCost)}\n\n` +
-                `📊 Avg/day: ${this.formatCostFull(data.funStats.avgDayCost)}\n\n` +
-                `🔮 Projected/month: ${this.formatCostFull(data.funStats.projectedMonthlyCost)}\n\n` +
+                `📊 14-day avg: ${this.formatCostFull(last14.avgDayCost)}/day\n\n` +
+                `🔮 Projected/month: ${this.formatCostFull(last14.avgDayCost * 30)}\n\n` +
                 `---\n\n` +
-                `_Stats from local machine storage only_\n\n` +
                 `_Click to open Overview_`
             );
             this.lifetimeCost.color = "#2ed573";
@@ -169,39 +167,38 @@ export class StatusBarManager implements vscode.Disposable {
             );
             this.todayCost.color = todayCostColor;
 
-            // Messages - scaled display, full on hover
-            this.messages.text = `$(comment-discussion) ${this.formatNumberScaled(data.allTime.messages)}`;
+            // Messages - scaled display, full on hover (Account Total)
+            this.messages.text = `$(comment-discussion) ${this.formatNumberScaled(acct.messages)}`;
             this.messages.tooltip = new vscode.MarkdownString(
-                `**Total Messages (Local History)**\n\n` +
-                `💬 ${this.formatNumberFull(data.allTime.messages)} messages\n\n` +
+                `**Account Total Messages**\n\n` +
+                `💬 ${this.formatNumberFull(acct.messages)} messages\n\n` +
                 `📊 Avg per session: ${this.formatNumberFull(data.funStats.avgMessagesPerSession)}\n\n` +
+                `---\n\n` +
+                `**Last 14 Days**\n\n` +
+                `💬 ${this.formatNumberFull(last14.messages)} messages\n\n` +
+                `📊 14-day avg: ${this.formatNumberFull(last14.avgDayMessages)}/day\n\n` +
                 `---\n\n` +
                 `**Activity Patterns**\n\n` +
                 `🕐 Peak hour: ${data.funStats.peakHour}\n\n` +
-                `🏆 Peak day: ${data.funStats.peakDay.date} (${this.formatNumberFull(data.funStats.peakDay.messages)} msgs)\n\n` +
-                `📈 Longest session: ${this.formatNumberFull(data.funStats.longestSessionMessages)} msgs\n\n` +
-                `---\n\n` +
                 `🦉 Night Owl: ${data.funStats.nightOwlScore}% | 🐦 Early Bird: ${data.funStats.earlyBirdScore}%\n\n` +
                 `---\n\n` +
-                `_Stats from local machine storage only_\n\n` +
                 `_Click to open Messages_`
             );
             this.messages.color = "#3498db";
 
-            // Tokens - scaled display, full on hover
-            this.tokens.text = `$(symbol-number) ${this.formatNumberScaled(data.allTime.tokens)}`;
+            // Tokens - scaled display, full on hover (Account Total)
+            this.tokens.text = `$(symbol-number) ${this.formatNumberScaled(acct.tokens)}`;
             this.tokens.tooltip = new vscode.MarkdownString(
-                `**Total Tokens (Local History)**\n\n` +
-                `🔢 Total: ${this.formatNumberFull(data.allTime.tokens)} tokens\n\n` +
-                `📅 Today: ${this.formatNumberFull(data.today.tokens)} tokens\n\n` +
-                `💰 Avg cost: $${(data.allTime.cost / Math.max(data.allTime.tokens, 1) * 1000).toFixed(4)}/1K\n\n` +
+                `**Account Total Tokens**\n\n` +
+                `🔢 Total: ${this.formatNumberFull(acct.tokens)} tokens\n\n` +
+                `📥 Input: ${this.formatNumberScaled(acct.inputTokens)}\n\n` +
+                `📤 Output: ${this.formatNumberScaled(acct.outputTokens)}\n\n` +
                 `---\n\n` +
                 `**Cache Efficiency**\n\n` +
                 `📊 Cache hit ratio: ${data.funStats.cacheHitRatio}%\n\n` +
                 `💵 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
-                `🗄️ Cached tokens: ${this.formatNumberScaled(data.allTime.cacheTokens)}\n\n` +
+                `🗄️ Cache read: ${this.formatNumberScaled(acct.cacheReadTokens)}\n\n` +
                 `---\n\n` +
-                `_Stats from local machine storage only_\n\n` +
                 `_Click to open Messages_`
             );
             this.tokens.color = "#9b59b6";

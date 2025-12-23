@@ -306,13 +306,29 @@ class DashboardViewProvider {
     getOverviewTab(data) {
         const barChart = this.getBarChartSvg(data, this._chartView);
         const pieChart = this.getModelPieChart(data);
+        const acct = data.accountTotal;
+        const last14 = data.last14Days;
         return `
-            <!-- API Cost Hero -->
+            <!-- Account Total Hero -->
             <div class="section">
-                <div class="hero">
-                    <div class="hero-value">${this.formatCost(data.allTime.cost)}</div>
-                    <div class="hero-label">API Cost (Local History)</div>
-                    <div class="hero-sublabel">From local machine storage</div>
+                <div class="section-header-bar account-total">Account Total</div>
+                <div class="hero" style="padding-top:4px">
+                    <div class="hero-value">${this.formatCost(acct.cost)}</div>
+                    <div class="hero-label">Lifetime API Cost</div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-box">
+                        <div class="stat-value tokens">${this.formatNumberCompact(acct.tokens)}</div>
+                        <div class="stat-label">Tokens</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value messages">${this.formatNumberCompact(acct.messages)}</div>
+                        <div class="stat-label">Messages</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${acct.sessions}</div>
+                        <div class="stat-label">Sessions</div>
+                    </div>
                 </div>
             </div>
 
@@ -335,37 +351,51 @@ class DashboardViewProvider {
                 </div>
             </div>
 
-            <!-- Local History Section -->
+            <!-- Last 14 Days Section -->
             <div class="section">
-                <div class="section-header-bar lifetime">Local History</div>
+                <div class="section-header-bar last14">Last 14 Days</div>
                 <div class="stat-row">
                     <div class="stat-box">
-                        <div class="stat-value messages">${this.formatNumberCompact(data.allTime.messages)}</div>
+                        <div class="stat-value cost">${this.formatCost(last14.cost)}</div>
+                        <div class="stat-label">Total Cost</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value messages">${this.formatNumberCompact(last14.messages)}</div>
                         <div class="stat-label">Messages</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-value tokens">${this.formatNumberCompact(data.allTime.tokens)}</div>
+                        <div class="stat-value tokens">${this.formatNumberCompact(last14.tokens)}</div>
                         <div class="stat-label">Tokens</div>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-value">${data.allTime.sessions}</div>
-                        <div class="stat-label">Sessions</div>
+                </div>
+                <div class="avg-row">
+                    <div class="avg-item">
+                        <span class="avg-label">14-Day Avg:</span>
+                        <span class="avg-value cost">${this.formatCost(last14.avgDayCost)}/day</span>
+                    </div>
+                    <div class="avg-item">
+                        <span class="avg-value messages">${this.formatNumberCompact(last14.avgDayMessages)}</span>
+                        <span class="avg-label">msgs/day</span>
+                    </div>
+                    <div class="avg-item">
+                        <span class="avg-value tokens">${this.formatNumberCompact(last14.avgDayTokens)}</span>
+                        <span class="avg-label">tokens/day</span>
                     </div>
                 </div>
+                <!-- Daily Activity Chart -->
+                ${barChart ? `
+                <div style="margin-top: 10px;">
+                    <div class="section-header">
+                        <div class="section-title">${this._chartView === 'messages' ? 'Daily Messages' : this._chartView === 'cost' ? 'Daily Cost' : 'Daily Tokens'}</div>
+                        <div class="chart-toggle">
+                            <button class="toggle-btn ${this._chartView === 'messages' ? 'active' : ''}" data-view="messages" style="--toggle-color: #ff8800" title="Messages">Msg</button>
+                            <button class="toggle-btn ${this._chartView === 'cost' ? 'active' : ''}" data-view="cost" style="--toggle-color: #2ed573" title="Cost">$</button>
+                            <button class="toggle-btn ${this._chartView === 'tokens' ? 'active' : ''}" data-view="tokens" style="--toggle-color: #3498db" title="Tokens">Tok</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">${barChart}</div>
+                </div>` : ''}
             </div>
-            <!-- Daily Activity Chart -->
-            ${barChart ? `
-            <div class="section">
-                <div class="section-header">
-                    <div class="section-title">${this._chartView === 'messages' ? 'Daily Messages' : this._chartView === 'cost' ? 'Daily Cost' : 'Daily Tokens'} (14 days)</div>
-                    <div class="chart-toggle">
-                        <button class="toggle-btn ${this._chartView === 'messages' ? 'active' : ''}" data-view="messages" style="--toggle-color: #ff8800" title="Messages">💬</button>
-                        <button class="toggle-btn ${this._chartView === 'cost' ? 'active' : ''}" data-view="cost" style="--toggle-color: #2ed573" title="Cost">💰</button>
-                        <button class="toggle-btn ${this._chartView === 'tokens' ? 'active' : ''}" data-view="tokens" style="--toggle-color: #3498db" title="Tokens">🔢</button>
-                    </div>
-                </div>
-                <div class="chart-container">${barChart}</div>
-            </div>` : ''}
 
             <!-- Models Pie Chart -->
             <div class="section">
@@ -390,8 +420,8 @@ class DashboardViewProvider {
                         <div class="fun-label">Day Streak</div>
                     </div>
                     <div class="fun-item">
-                        <div class="fun-value">${this.formatCost(data.funStats.avgDayCost)}</div>
-                        <div class="fun-label">Avg/Day</div>
+                        <div class="fun-value">${data.funStats.cacheHitRatio}%</div>
+                        <div class="fun-label">Cache Hit</div>
                     </div>
                 </div>
             </div>
@@ -400,13 +430,15 @@ class DashboardViewProvider {
     getCostTab(data) {
         const trendArrow = data.funStats.costTrend === 'up' ? '📈' :
             data.funStats.costTrend === 'down' ? '📉' : '➡️';
+        const acct = data.accountTotal;
+        const last14 = data.last14Days;
         return `
-            <!-- Cost Overview -->
+            <!-- Account Total Cost -->
             <div class="section">
-                <div class="hero">
-                    <div class="hero-value">${this.formatCost(data.allTime.cost)}</div>
-                    <div class="hero-label">API Cost (Local History)</div>
-                    <div class="hero-sublabel">From local machine storage</div>
+                <div class="section-header-bar account-total">Account Total</div>
+                <div class="hero" style="padding-top:4px">
+                    <div class="hero-value">${this.formatCost(acct.cost)}</div>
+                    <div class="hero-label">Lifetime API Cost</div>
                 </div>
             </div>
 
@@ -425,32 +457,36 @@ class DashboardViewProvider {
                 </div>
             </div>
 
-            <!-- Cost Insights -->
+            <!-- Cost Insights (14-day based) -->
             <div class="section">
-                <div class="section-title">Cost Insights</div>
+                <div class="section-header-bar last14">Last 14 Days</div>
                 <div class="info-list">
                     <div class="info-row">
                         <span>${trendArrow} 7-Day Trend</span>
                         <span class="info-value">${data.funStats.costTrend}</span>
                     </div>
                     <div class="info-row">
-                        <span>🏆 Highest Day</span>
-                        <span class="info-value">${this.formatCost(data.funStats.highestDayCost)}</span>
+                        <span>💰 14-Day Total</span>
+                        <span class="info-value">${this.formatCost(last14.cost)}</span>
                     </div>
                     <div class="info-row">
-                        <span>📊 Average/Day</span>
-                        <span class="info-value">${this.formatCost(data.funStats.avgDayCost)}</span>
+                        <span>📊 14-Day Avg/Day</span>
+                        <span class="info-value">${this.formatCost(last14.avgDayCost)}</span>
                     </div>
                     <div class="info-row">
                         <span>🔮 Projected/Month</span>
-                        <span class="info-value">${this.formatCost(data.funStats.projectedMonthlyCost)}</span>
+                        <span class="info-value">${this.formatCost(last14.avgDayCost * 30)}</span>
+                    </div>
+                    <div class="info-row">
+                        <span>🏆 Highest Day</span>
+                        <span class="info-value">${this.formatCost(data.funStats.highestDayCost)}</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Cache Savings -->
+            <!-- Cache Savings (Account Total) -->
             <div class="section">
-                <div class="section-title">Cache Efficiency</div>
+                <div class="section-title">Cache Efficiency (Account Total)</div>
                 <div class="info-list">
                     <div class="info-row">
                         <span>📊 Cache Hit Ratio</span>
@@ -461,8 +497,12 @@ class DashboardViewProvider {
                         <span class="info-value" style="color: #2ed573">${this.formatCost(data.funStats.cacheSavings)}</span>
                     </div>
                     <div class="info-row">
-                        <span>🗄️ Cached Tokens</span>
-                        <span class="info-value">${this.formatNumberCompact(data.allTime.cacheTokens)}</span>
+                        <span>🗄️ Cache Read Tokens</span>
+                        <span class="info-value">${this.formatNumberCompact(acct.cacheReadTokens)}</span>
+                    </div>
+                    <div class="info-row">
+                        <span>📝 Cache Write Tokens</span>
+                        <span class="info-value">${this.formatNumberCompact(acct.cacheWriteTokens)}</span>
                     </div>
                 </div>
             </div>
@@ -481,44 +521,88 @@ class DashboardViewProvider {
     }
     getMessagesTab(data) {
         const cs = data.conversationStats;
+        const acct = data.accountTotal;
+        const last14 = data.last14Days;
         return `
-            <!-- Message Overview -->
+            <!-- Account Total Messages -->
             <div class="section">
-                <div class="hero">
-                    <div class="hero-value">${this.formatNumberCompact(data.allTime.messages)}</div>
+                <div class="section-header-bar account-total">Account Total</div>
+                <div class="hero" style="padding-top:4px">
+                    <div class="hero-value" style="color: var(--color-messages)">${this.formatNumberCompact(acct.messages)}</div>
                     <div class="hero-label">Total Messages</div>
                 </div>
                 <div class="stat-row">
                     <div class="stat-box">
-                        <div class="stat-value">${this.formatNumber(data.today.messages)}</div>
-                        <div class="stat-label">Today</div>
+                        <div class="stat-value tokens">${this.formatNumberCompact(acct.tokens)}</div>
+                        <div class="stat-label">Total Tokens</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-value">${data.funStats.avgMessagesPerSession}</div>
-                        <div class="stat-label">Avg/Session</div>
+                        <div class="stat-value">${acct.sessions}</div>
+                        <div class="stat-label">Sessions</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Tokens Breakdown -->
+            <!-- Today -->
             <div class="section">
-                <div class="section-title">🔢 Tokens</div>
+                <div class="section-header-bar today">Today</div>
+                <div class="stat-row">
+                    <div class="stat-box">
+                        <div class="stat-value messages">${this.formatNumber(data.today.messages)}</div>
+                        <div class="stat-label">Messages</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value tokens">${this.formatNumberCompact(data.today.tokens)}</div>
+                        <div class="stat-label">Tokens</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Last 14 Days -->
+            <div class="section">
+                <div class="section-header-bar last14">Last 14 Days</div>
+                <div class="stat-row">
+                    <div class="stat-box">
+                        <div class="stat-value messages">${this.formatNumberCompact(last14.messages)}</div>
+                        <div class="stat-label">Messages</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value tokens">${this.formatNumberCompact(last14.tokens)}</div>
+                        <div class="stat-label">Tokens</div>
+                    </div>
+                </div>
+                <div class="avg-row">
+                    <div class="avg-item">
+                        <span class="avg-label">14-Day Avg:</span>
+                        <span class="avg-value messages">${this.formatNumberCompact(last14.avgDayMessages)}</span>
+                        <span class="avg-label">msgs/day</span>
+                    </div>
+                    <div class="avg-item">
+                        <span class="avg-value tokens">${this.formatNumberCompact(last14.avgDayTokens)}</span>
+                        <span class="avg-label">tokens/day</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Token Breakdown (Account Total) -->
+            <div class="section">
+                <div class="section-title">Token Breakdown (Account Total)</div>
                 <div class="info-list">
                     <div class="info-row">
-                        <span>🔢 Total Tokens</span>
-                        <span class="info-value">${this.formatNumberCompact(data.allTime.tokens)}</span>
+                        <span>📥 Input Tokens</span>
+                        <span class="info-value">${this.formatNumberCompact(acct.inputTokens)}</span>
                     </div>
                     <div class="info-row">
-                        <span>📊 Regular Tokens</span>
-                        <span class="info-value">${this.formatNumberCompact(data.allTime.totalTokens)}</span>
+                        <span>📤 Output Tokens</span>
+                        <span class="info-value">${this.formatNumberCompact(acct.outputTokens)}</span>
                     </div>
                     <div class="info-row">
-                        <span>🗄️ Cache Tokens</span>
-                        <span class="info-value">${this.formatNumberCompact(data.allTime.cacheTokens)}</span>
+                        <span>🗄️ Cache Read</span>
+                        <span class="info-value">${this.formatNumberCompact(acct.cacheReadTokens)}</span>
                     </div>
                     <div class="info-row">
-                        <span>📈 Avg/Message</span>
-                        <span class="info-value">${this.formatNumberCompact(data.allTime.avgTokensPerMessage)}</span>
+                        <span>📝 Cache Write</span>
+                        <span class="info-value">${this.formatNumberCompact(acct.cacheWriteTokens)}</span>
                     </div>
                 </div>
             </div>
@@ -924,6 +1008,42 @@ class DashboardViewProvider {
             color: var(--vscode-descriptionForeground);
             border-bottom: 1px solid var(--vscode-panel-border);
         }
+        .section-header-bar.account-total {
+            background: rgba(46, 213, 115, 0.15);
+            color: var(--color-cost);
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        .section-header-bar.last14 {
+            background: rgba(52, 152, 219, 0.15);
+            color: var(--color-messages);
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+
+        /* 14-Day Average Row */
+        .avg-row {
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 4px;
+            margin-top: 8px;
+            background: var(--vscode-sideBar-background);
+            border-radius: 6px;
+            gap: 4px;
+        }
+        .avg-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+        }
+        .avg-label {
+            color: var(--vscode-descriptionForeground);
+        }
+        .avg-value {
+            font-weight: 600;
+        }
+        .avg-value.cost { color: var(--color-cost); }
+        .avg-value.messages { color: var(--color-messages); }
+        .avg-value.tokens { color: var(--color-tokens); }
 
         /* Stats */
         .stat-row {

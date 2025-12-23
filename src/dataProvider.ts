@@ -97,6 +97,27 @@ export interface UsageData {
         session: { percentage: number; current: number; limit: number };
         weekly: { percentage: number; current: number; limit: number };
     };
+    // Account Total - lifetime aggregates from Claude (all usage ever)
+    accountTotal: {
+        cost: number;
+        tokens: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        cacheWriteTokens: number;
+        messages: number;
+        sessions: number;
+    };
+    // Last 14 days stats (for averages and trends)
+    last14Days: {
+        cost: number;
+        messages: number;
+        tokens: number;
+        avgDayCost: number;
+        avgDayMessages: number;
+        avgDayTokens: number;
+        daysActive: number;
+    };
     allTime: {
         cost: number;
         messages: number;
@@ -224,6 +245,14 @@ export function getUsageData(): UsageData {
             session: { percentage: 0, current: 0, limit: 1 },
             weekly: { percentage: 0, current: 0, limit: 1 }
         },
+        accountTotal: {
+            cost: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
+            cacheReadTokens: 0, cacheWriteTokens: 0, messages: 0, sessions: 0
+        },
+        last14Days: {
+            cost: 0, messages: 0, tokens: 0,
+            avgDayCost: 0, avgDayMessages: 0, avgDayTokens: 0, daysActive: 0
+        },
         allTime: {
             cost: 0, messages: 0, tokens: 0, totalTokens: 0, cacheTokens: 0,
             dateRange: 'No data', sessions: 0, avgTokensPerMessage: 0, daysActive: 0, firstUsedDate: ''
@@ -252,6 +281,48 @@ export function getUsageData(): UsageData {
         // === BASIC STATS ===
         defaultData.allTime.messages = statsCache.totalMessages || 0;
         defaultData.allTime.sessions = statsCache.totalSessions || 0;
+        defaultData.accountTotal.messages = statsCache.totalMessages || 0;
+        defaultData.accountTotal.sessions = statsCache.totalSessions || 0;
+
+        // === ACCOUNT TOTAL (lifetime aggregates from modelUsage) ===
+        if (statsCache.modelUsage) {
+            let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
+            let accountCost = 0;
+
+            for (const [modelName, usage] of Object.entries(statsCache.modelUsage)) {
+                const m = usage as any;
+                const pricing = getPricingForModel(modelName);
+
+                const input = m.inputTokens || 0;
+                const output = m.outputTokens || 0;
+                const cacheRead = m.cacheReadInputTokens || 0;
+                const cacheWrite = m.cacheCreationInputTokens || 0;
+
+                totalInput += input;
+                totalOutput += output;
+                totalCacheRead += cacheRead;
+                totalCacheWrite += cacheWrite;
+
+                // Calculate cost for this model
+                accountCost += (input / 1_000_000) * pricing.input;
+                accountCost += (output / 1_000_000) * pricing.output;
+                accountCost += (cacheRead / 1_000_000) * pricing.cacheRead;
+                accountCost += (cacheWrite / 1_000_000) * pricing.cacheWrite;
+            }
+
+            defaultData.accountTotal.inputTokens = totalInput;
+            defaultData.accountTotal.outputTokens = totalOutput;
+            defaultData.accountTotal.cacheReadTokens = totalCacheRead;
+            defaultData.accountTotal.cacheWriteTokens = totalCacheWrite;
+            defaultData.accountTotal.tokens = totalInput + totalOutput + totalCacheRead + totalCacheWrite;
+            defaultData.accountTotal.cost = accountCost;
+
+            // Cache efficiency from account totals
+            if (totalInput + totalCacheRead > 0) {
+                defaultData.funStats.cacheHitRatio = Math.round((totalCacheRead / (totalInput + totalCacheRead)) * 100);
+                defaultData.funStats.cacheSavings = (totalCacheRead / 1_000_000) * (3 - 0.30); // Sonnet savings estimate
+            }
+        }
 
         // === DATE RANGE ===
         if (statsCache.firstSessionDate && statsCache.lastComputedDate) {
@@ -463,6 +534,26 @@ export function getUsageData(): UsageData {
             } catch (dbError) {
                 console.error('Error merging SQLite data:', dbError);
             }
+        }
+
+        // === LAST 14 DAYS CALCULATION ===
+        const last14DaysData = defaultData.dailyHistory.slice(-14);
+        if (last14DaysData.length > 0) {
+            let sum14Cost = 0, sum14Messages = 0, sum14Tokens = 0;
+            let days14Active = 0;
+            for (const day of last14DaysData) {
+                sum14Cost += day.cost;
+                sum14Messages += day.messages;
+                sum14Tokens += day.tokens;
+                if (day.messages > 0) days14Active++;
+            }
+            defaultData.last14Days.cost = sum14Cost;
+            defaultData.last14Days.messages = sum14Messages;
+            defaultData.last14Days.tokens = sum14Tokens;
+            defaultData.last14Days.daysActive = days14Active;
+            defaultData.last14Days.avgDayCost = sum14Cost / 14;
+            defaultData.last14Days.avgDayMessages = Math.round(sum14Messages / 14);
+            defaultData.last14Days.avgDayTokens = Math.round(sum14Tokens / 14);
         }
 
         // === STREAK CALCULATION ===
