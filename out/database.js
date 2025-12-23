@@ -32,9 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initDatabase = initDatabase;
 exports.saveDatabase = saveDatabase;
@@ -53,10 +50,13 @@ exports.importFromCache = importFromCache;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
-const sql_js_1 = __importDefault(require("sql.js"));
+// Use ASM version (pure JS, no WASM needed) for VS Code extension compatibility
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const initSqlJs = require('sql.js/dist/sql-asm.js');
 // Database singleton
 let db = null;
 let dbInitPromise = null;
+let dbInitFailed = false;
 // Database file path
 function getDbPath() {
     return path.join(os.homedir(), '.claude', 'analytics.db');
@@ -65,8 +65,13 @@ function getDbPath() {
 const SCHEMA_VERSION = 1;
 /**
  * Initialize the SQLite database (creates tables if needed)
+ * Returns null if initialization fails - extension continues without persistence
  */
 async function initDatabase() {
+    // Don't retry if already failed
+    if (dbInitFailed) {
+        return null;
+    }
     // Return existing promise if initialization is in progress
     if (dbInitPromise) {
         return dbInitPromise;
@@ -77,8 +82,8 @@ async function initDatabase() {
     }
     dbInitPromise = (async () => {
         try {
-            // Initialize sql.js
-            const SQL = await (0, sql_js_1.default)();
+            // Initialize sql.js (ASM version - pure JS, no WASM)
+            const SQL = await initSqlJs();
             const dbPath = getDbPath();
             const dbDir = path.dirname(dbPath);
             // Ensure .claude directory exists
@@ -97,11 +102,15 @@ async function initDatabase() {
             createSchema(db);
             // Check and run migrations
             runMigrations(db);
+            console.log('Claude Analytics: Database initialized successfully');
             return db;
         }
         catch (error) {
-            console.error('Failed to initialize database:', error);
-            throw error;
+            console.error('Claude Analytics: Failed to initialize database:', error);
+            dbInitFailed = true;
+            db = null;
+            dbInitPromise = null;
+            return null;
         }
     })();
     return dbInitPromise;

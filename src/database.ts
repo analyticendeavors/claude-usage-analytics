@@ -1,11 +1,17 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import initSqlJs, { Database } from 'sql.js';
+
+// Use ASM version (pure JS, no WASM needed) for VS Code extension compatibility
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const initSqlJs = require('sql.js/dist/sql-asm.js');
+
+type Database = any;
 
 // Database singleton
 let db: Database | null = null;
 let dbInitPromise: Promise<Database> | null = null;
+let dbInitFailed: boolean = false;
 
 // Database file path
 function getDbPath(): string {
@@ -17,8 +23,14 @@ const SCHEMA_VERSION = 1;
 
 /**
  * Initialize the SQLite database (creates tables if needed)
+ * Returns null if initialization fails - extension continues without persistence
  */
-export async function initDatabase(): Promise<Database> {
+export async function initDatabase(): Promise<Database | null> {
+    // Don't retry if already failed
+    if (dbInitFailed) {
+        return null;
+    }
+
     // Return existing promise if initialization is in progress
     if (dbInitPromise) {
         return dbInitPromise;
@@ -31,7 +43,7 @@ export async function initDatabase(): Promise<Database> {
 
     dbInitPromise = (async () => {
         try {
-            // Initialize sql.js
+            // Initialize sql.js (ASM version - pure JS, no WASM)
             const SQL = await initSqlJs();
 
             const dbPath = getDbPath();
@@ -56,10 +68,14 @@ export async function initDatabase(): Promise<Database> {
             // Check and run migrations
             runMigrations(db);
 
+            console.log('Claude Analytics: Database initialized successfully');
             return db;
         } catch (error) {
-            console.error('Failed to initialize database:', error);
-            throw error;
+            console.error('Claude Analytics: Failed to initialize database:', error);
+            dbInitFailed = true;
+            db = null;
+            dbInitPromise = null;
+            return null;
         }
     })();
 
