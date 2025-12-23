@@ -156,6 +156,28 @@ Use the **"Claude Analytics: Clear History Before Date"** command to remove old 
 
 This is useful if you want to reset your stats or remove data from a specific period.
 
+### Backfill from Claude.ai Export (Optional)
+
+Want to import your full Claude.ai conversation history? You can backfill data from a Claude.ai data export:
+
+1. Export your data from [claude.ai](https://claude.ai) (Settings > Account > Export Data)
+2. Extract the downloaded ZIP file
+3. Run the included Python script:
+
+```bash
+python backfill_claude_export.py "path/to/data-export-folder"
+```
+
+This imports:
+- Daily message counts and estimated token usage
+- Estimated API-equivalent costs
+- Personality analysis (questions, please/thanks, etc.)
+- Activity patterns (peak hours, night owl/early bird scores)
+- Claude thinking time analytics
+- User active time estimates
+
+See [BACKFILL_GUIDE.md](BACKFILL_GUIDE.md) for detailed instructions.
+
 ---
 
 ## Installation
