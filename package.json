@@ -89,6 +89,11 @@
         "command": "claudeUsage.exportData",
         "title": "Export Claude Usage Data",
         "icon": "$(export)"
+      },
+      {
+        "command": "claudeUsage.clearHistory",
+        "title": "Claude Analytics: Clear History Before Date",
+        "icon": "$(trash)"
       }
     ],
     "menus": {

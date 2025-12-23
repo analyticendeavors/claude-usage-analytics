@@ -471,6 +471,39 @@ export async function importFromCache(statsCache: any): Promise<{ imported: numb
     return { imported, skipped };
 }
 
+/**
+ * Clear history before a specified date
+ * @param beforeDate Date string in YYYY-MM-DD format - all records before this date will be deleted
+ * @returns Number of days deleted
+ */
+export function clearHistoryBeforeDate(beforeDate: string): number {
+    if (!db) return 0;
+
+    try {
+        // Count records to be deleted
+        const countResult = db.exec(`SELECT COUNT(*) FROM daily_snapshots WHERE date < ?`, [beforeDate]);
+        const deleteCount = countResult.length > 0 ? countResult[0].values[0][0] as number : 0;
+
+        if (deleteCount === 0) {
+            return 0;
+        }
+
+        // Delete from daily_snapshots
+        db.run(`DELETE FROM daily_snapshots WHERE date < ?`, [beforeDate]);
+
+        // Delete from model_usage
+        db.run(`DELETE FROM model_usage WHERE date < ?`, [beforeDate]);
+
+        // Save changes to disk
+        saveDatabase();
+
+        return deleteCount;
+    } catch (error) {
+        console.error('Claude Analytics: Failed to clear history:', error);
+        return 0;
+    }
+}
+
 // Model pricing helper (duplicated from dataProvider to avoid circular deps)
 const MODEL_PRICING: { [key: string]: { input: number; output: number; cacheRead: number; cacheWrite: number } } = {
     opus: { input: 15, output: 75, cacheRead: 1.875, cacheWrite: 18.75 },

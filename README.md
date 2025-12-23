@@ -111,7 +111,6 @@ A comprehensive 4-tab analytics panel with deep insights:
 - **Request type distribution** (debugging, features, explanations, refactoring)
 - **Peak hours analysis** — when you're most active
 - **Night owl vs early bird** scoring
-- **Session statistics** and longest session tracking
 
 ---
 
@@ -128,9 +127,34 @@ This extension prioritizes your privacy:
 
 **Data Sources:**
 - `~/.claude/stats-cache.json` — Token usage and model statistics (Claude Code's rolling 30-day window)
-- `~/.claude/analytics.db` — **NEW:** SQLite database preserving your full usage history forever
+- `~/.claude/analytics.db` — SQLite database preserving your full usage history
 - `~/.claude/projects/*/` — Conversation history for personality analysis and real-time today's cost
 - `~/.claude/.credentials.json` — Subscription tier information (read-only)
+
+---
+
+## Data & History
+
+### Initial Data Window
+
+When you first install the extension, your "Local History" stats will only include data from Claude Code's cache file—typically the **last ~30 days**. This is because Claude Code maintains a rolling window and doesn't preserve older data.
+
+### Automatic History Accumulation
+
+Once installed, the extension automatically saves your usage data to a local SQLite database (`~/.claude/analytics.db`). **From this point forward, your history is preserved forever**—even as Claude Code's cache rolls over.
+
+Over time, your "Local History" totals will grow to include months or years of usage data.
+
+### Managing History
+
+Use the **"Claude Analytics: Clear History Before Date"** command to remove old data:
+
+1. Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+2. Type "Claude Analytics: Clear History"
+3. Select a cutoff date
+4. Confirm deletion
+
+This is useful if you want to reset your stats or remove data from a specific period.
 
 ---
 

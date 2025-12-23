@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getUsageData, UsageData, SessionInfo } from './dataProvider';
+import { getUsageData, UsageData } from './dataProvider';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'claudeUsage.dashboard';
@@ -596,27 +596,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                 </div>
             </div>
 
-            <!-- Recent Sessions -->
-            <div class="section">
-                <div class="section-title">📂 Recent Sessions</div>
-                ${data.recentSessions.length > 0 ? `
-                <div class="session-list">
-                    ${data.recentSessions.map(s => `
-                        <div class="session-item">
-                            <div class="session-header">
-                                <span class="session-project" title="${s.project}">${s.project}</span>
-                                <span class="session-date">${s.date}</span>
-                            </div>
-                            <div class="session-stats">
-                                <span>💬 ${s.messages}</span>
-                                <span>🔢 ${this.formatNumberCompact(s.tokens)}</span>
-                                <span>💰 ${this.formatCost(s.cost)}</span>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-                ` : '<span class="muted">No sessions found</span>'}
-            </div>
         `;
     }
 
@@ -1243,46 +1222,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         .btn-secondary {
             background: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
-        }
-
-        /* Session List */
-        .session-list {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .session-item {
-            background: var(--vscode-sideBar-background);
-            border-radius: 4px;
-            padding: 6px 8px;
-        }
-        .session-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 4px;
-        }
-        .session-project {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--vscode-foreground);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 120px;
-        }
-        .session-date {
-            font-size: 9px;
-            color: var(--vscode-descriptionForeground);
-        }
-        .session-stats {
-            display: flex;
-            gap: 8px;
-            font-size: 9px;
-            color: var(--vscode-descriptionForeground);
-        }
-        .session-stats span {
-            white-space: nowrap;
         }
 
         /* Heatmap */

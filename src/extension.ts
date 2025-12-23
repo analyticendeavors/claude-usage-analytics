@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { DashboardViewProvider } from './dashboardView';
 import { StatusBarManager } from './statusBar';
 import { getUsageData, initializeDataWithDatabase } from './dataProvider';
-import { closeDatabase } from './database';
+import { closeDatabase, clearHistoryBeforeDate, getOldestDate } from './database';
 
 let statusBarManager: StatusBarManager;
 let dashboardProvider: DashboardViewProvider;
@@ -144,6 +144,73 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('claudeUsage.showTab.personality', () => {
             vscode.commands.executeCommand('claudeUsage.dashboard.focus');
             dashboardProvider.switchTab('personality');
+        })
+    );
+
+    // Register clear history command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('claudeUsage.clearHistory', async () => {
+            const oldestDate = getOldestDate();
+            if (!oldestDate) {
+                vscode.window.showInformationMessage('No history data found to clear.');
+                return;
+            }
+
+            // Show date picker options
+            const options = [
+                { label: 'Last 7 days', days: 7 },
+                { label: 'Last 30 days', days: 30 },
+                { label: 'Last 90 days', days: 90 },
+                { label: 'Last 6 months', days: 180 },
+                { label: 'Last year', days: 365 },
+                { label: 'Custom date...', days: -1 }
+            ];
+
+            const selection = await vscode.window.showQuickPick(
+                options.map(o => ({ label: `Keep ${o.label}`, description: o.days > 0 ? `Delete data older than ${o.days} days` : 'Enter a specific date', value: o.days })),
+                { placeHolder: 'Select how much history to keep' }
+            );
+
+            if (!selection) return;
+
+            let cutoffDate: string;
+            if (selection.value === -1) {
+                // Custom date input
+                const input = await vscode.window.showInputBox({
+                    prompt: 'Enter cutoff date (YYYY-MM-DD). All data BEFORE this date will be deleted.',
+                    placeHolder: 'e.g., 2025-01-01',
+                    validateInput: (value) => {
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                            return 'Please enter date in YYYY-MM-DD format';
+                        }
+                        return null;
+                    }
+                });
+                if (!input) return;
+                cutoffDate = input;
+            } else {
+                const date = new Date();
+                date.setDate(date.getDate() - selection.value);
+                cutoffDate = date.toISOString().split('T')[0];
+            }
+
+            // Confirm deletion
+            const confirm = await vscode.window.showWarningMessage(
+                `Delete all history before ${cutoffDate}? This cannot be undone.`,
+                { modal: true },
+                'Delete'
+            );
+
+            if (confirm === 'Delete') {
+                const deleted = clearHistoryBeforeDate(cutoffDate);
+                if (deleted > 0) {
+                    vscode.window.showInformationMessage(`Deleted ${deleted} days of history.`);
+                    statusBarManager.refresh();
+                    dashboardProvider.refresh();
+                } else {
+                    vscode.window.showInformationMessage('No data found before that date.');
+                }
+            }
         })
     );
 

@@ -173,50 +173,49 @@ function getUsageData() {
         // === MODEL USAGE & TOTAL COST ===
         let totalTokens = 0, totalCacheTokens = 0, totalCost = 0;
         const models = [];
-        if (statsCache.modelUsage) {
+        const modelTokenTotals = {};
+        // Calculate totals from DAILY values only (not lifetime aggregates)
+        // This ensures "Local History" only shows data we have daily records for
+        if (statsCache.dailyModelTokens && Array.isArray(statsCache.dailyModelTokens)) {
+            for (const day of statsCache.dailyModelTokens) {
+                if (day.tokensByModel) {
+                    for (const [modelName, tokens] of Object.entries(day.tokensByModel)) {
+                        const tokenCount = tokens;
+                        totalTokens += tokenCount;
+                        // Track per-model totals for pie chart
+                        modelTokenTotals[modelName] = (modelTokenTotals[modelName] || 0) + tokenCount;
+                        // Calculate cost based on model pricing
+                        // Using approximate split: 30% input, 10% output, 50% cache read, 10% cache write
+                        const pricing = getPricingForModel(modelName);
+                        const avgRate = (pricing.input * 0.3 + pricing.output * 0.1 + pricing.cacheRead * 0.5 + pricing.cacheWrite * 0.1);
+                        totalCost += (tokenCount / 1000000) * avgRate;
+                    }
+                }
+            }
+            // Build model breakdown for pie chart
             let grandTotal = 0;
-            // First pass: calculate totals
-            for (const [modelName, usage] of Object.entries(statsCache.modelUsage)) {
-                const m = usage;
-                const pricing = getPricingForModel(modelName);
-                const input = m.inputTokens || 0;
-                const output = m.outputTokens || 0;
-                const cacheRead = m.cacheReadInputTokens || 0;
-                const cacheWrite = m.cacheCreationInputTokens || 0;
-                totalTokens += input + output;
-                totalCacheTokens += cacheRead + cacheWrite;
-                grandTotal += input + output + cacheRead + cacheWrite;
-                // Calculate cost for this model
-                totalCost += (input / 1000000) * pricing.input;
-                totalCost += (output / 1000000) * pricing.output;
-                totalCost += (cacheRead / 1000000) * pricing.cacheRead;
-                totalCost += (cacheWrite / 1000000) * pricing.cacheWrite;
+            for (const [modelName, tokens] of Object.entries(modelTokenTotals)) {
+                grandTotal += tokens;
                 models.push({
                     name: formatModelName(modelName),
-                    tokens: input + output + cacheRead + cacheWrite,
-                    percentage: 0, // Calculate after we have grandTotal
+                    tokens: tokens,
+                    percentage: 0,
                     color: getModelColor(modelName)
                 });
             }
-            // Second pass: calculate percentages
+            // Calculate percentages
             for (const model of models) {
                 model.percentage = grandTotal > 0 ? (model.tokens / grandTotal) * 100 : 0;
             }
             defaultData.allTime.cost = totalCost;
+            defaultData.allTime.tokens = totalTokens;
             defaultData.allTime.totalTokens = totalTokens;
-            defaultData.allTime.cacheTokens = totalCacheTokens;
-            defaultData.allTime.tokens = totalTokens + totalCacheTokens;
+            defaultData.allTime.cacheTokens = 0; // Can't determine from daily breakdown
             defaultData.models = models.sort((a, b) => b.tokens - a.tokens).slice(0, 5);
-            // Cache efficiency
-            const totalInput = Object.values(statsCache.modelUsage)
-                .reduce((sum, m) => sum + (m.inputTokens || 0), 0);
-            const totalCacheRead = Object.values(statsCache.modelUsage)
-                .reduce((sum, m) => sum + (m.cacheReadInputTokens || 0), 0);
-            if (totalInput + totalCacheRead > 0) {
-                defaultData.funStats.cacheHitRatio = Math.round((totalCacheRead / (totalInput + totalCacheRead)) * 100);
-                // Savings = cache tokens * (regular price - cache price)
-                defaultData.funStats.cacheSavings = (totalCacheRead / 1000000) * (15 - 1.875); // Opus savings
-            }
+            // Cache efficiency - estimate from daily data (not available in daily breakdown)
+            // Set reasonable defaults since we can't calculate from daily data
+            defaultData.funStats.cacheHitRatio = 0;
+            defaultData.funStats.cacheSavings = 0;
         }
         // === DAILY HISTORY (from dailyActivity + dailyModelTokens) ===
         const todayStr = getLocalDateString();
