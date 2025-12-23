@@ -50,7 +50,7 @@ Seven live statistics widgets always visible at a glance:
 
 | Widget | Icon | Displays | Click Action |
 |--------|------|----------|--------------|
-| **Lifetime Cost** | `$(graph)` | Total all-time spending | Opens Overview tab |
+| **Local History Cost** | `$(graph)` | Total spending (local storage) | Opens Overview tab |
 | **Today's Cost** | `$(calendar)` | Real-time current day usage | Opens Cost tab |
 | **Messages** | `$(comment-discussion)` | Total message count | Opens Messages tab |
 | **Tokens** | `$(symbol-number)` | Token consumption | Opens Messages tab |
@@ -333,7 +333,7 @@ npx vsce package   # Create .vsix package
 ### v1.1.0 (2025-12-22)
 - **SQLite persistence**: Your usage history is now preserved forever in a local SQLite database, surviving Claude Code's 30-day rolling window
 - **Historical data import**: On first install, automatically imports existing data from stats-cache.json
-- **Improved lifetime stats**: Lifetime totals now include full historical data, not just the last 30 days
+- **Local history stats**: "Local History" totals now include full data from your local SQLite database, not just the last 30 days
 - **7 new achievements**: Token Titan (1M+ tokens), $100 Club, $500 Spender, $1K Whale, Refactor Pro, Refactor King, Weekend Warrior
 - **Export to CSV/JSON**: Export your usage data via dashboard button or view title menu
 - **Budget tracking**: New `dailyBudget` and `weeklyBudget` settings with status bar color coding (green/yellow/red)

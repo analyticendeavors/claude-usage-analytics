@@ -103,8 +103,8 @@ class StatusBarManager {
             const trendArrow = data.funStats.costTrend === 'up' ? '📈' :
                 data.funStats.costTrend === 'down' ? '📉' : '➡️';
             this.lifetimeCost.text = `$(graph) ${this.formatCostScaled(data.allTime.cost)}`;
-            this.lifetimeCost.tooltip = new vscode.MarkdownString(`**API Cost Equivalent (Lifetime)**\n\n` +
-                `💰 All-time: ${this.formatCostFull(data.allTime.cost)}\n\n` +
+            this.lifetimeCost.tooltip = new vscode.MarkdownString(`**API Cost Equivalent (Local History)**\n\n` +
+                `💰 Total: ${this.formatCostFull(data.allTime.cost)}\n\n` +
                 `_Based on per-token API rates, not subscription cost_\n\n` +
                 `---\n\n` +
                 `📊 Sessions: ${this.formatNumberFull(data.allTime.sessions)}\n\n` +
@@ -117,6 +117,7 @@ class StatusBarManager {
                 `📊 Avg/day: ${this.formatCostFull(data.funStats.avgDayCost)}\n\n` +
                 `🔮 Projected/month: ${this.formatCostFull(data.funStats.projectedMonthlyCost)}\n\n` +
                 `---\n\n` +
+                `_Stats from local machine storage only_\n\n` +
                 `_Click to open Overview_`);
             this.lifetimeCost.color = "#2ed573";
             // Today's cost - scaled display, full on hover
@@ -161,7 +162,7 @@ class StatusBarManager {
             this.todayCost.color = todayCostColor;
             // Messages - scaled display, full on hover
             this.messages.text = `$(comment-discussion) ${this.formatNumberScaled(data.allTime.messages)}`;
-            this.messages.tooltip = new vscode.MarkdownString(`**Total Messages**\n\n` +
+            this.messages.tooltip = new vscode.MarkdownString(`**Total Messages (Local History)**\n\n` +
                 `💬 ${this.formatNumberFull(data.allTime.messages)} messages\n\n` +
                 `📊 Avg per session: ${this.formatNumberFull(data.funStats.avgMessagesPerSession)}\n\n` +
                 `---\n\n` +
@@ -172,12 +173,13 @@ class StatusBarManager {
                 `---\n\n` +
                 `🦉 Night Owl: ${data.funStats.nightOwlScore}% | 🐦 Early Bird: ${data.funStats.earlyBirdScore}%\n\n` +
                 `---\n\n` +
+                `_Stats from local machine storage only_\n\n` +
                 `_Click to open Messages_`);
             this.messages.color = "#3498db";
             // Tokens - scaled display, full on hover
             this.tokens.text = `$(symbol-number) ${this.formatNumberScaled(data.allTime.tokens)}`;
-            this.tokens.tooltip = new vscode.MarkdownString(`**Total Tokens**\n\n` +
-                `🔢 All-time: ${this.formatNumberFull(data.allTime.tokens)} tokens\n\n` +
+            this.tokens.tooltip = new vscode.MarkdownString(`**Total Tokens (Local History)**\n\n` +
+                `🔢 Total: ${this.formatNumberFull(data.allTime.tokens)} tokens\n\n` +
                 `📅 Today: ${this.formatNumberFull(data.today.tokens)} tokens\n\n` +
                 `💰 Avg cost: $${(data.allTime.cost / Math.max(data.allTime.tokens, 1) * 1000).toFixed(4)}/1K\n\n` +
                 `---\n\n` +
@@ -186,6 +188,7 @@ class StatusBarManager {
                 `💵 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
                 `🗄️ Cached tokens: ${this.formatNumberScaled(data.allTime.cacheTokens)}\n\n` +
                 `---\n\n` +
+                `_Stats from local machine storage only_\n\n` +
                 `_Click to open Messages_`);
             this.tokens.color = "#9b59b6";
             // Conversation stats for both items

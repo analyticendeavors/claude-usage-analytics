@@ -311,8 +311,8 @@ class DashboardViewProvider {
             <div class="section">
                 <div class="hero">
                     <div class="hero-value">${this.formatCost(data.allTime.cost)}</div>
-                    <div class="hero-label">API Cost (Lifetime)</div>
-                    <div class="hero-sublabel">Equivalent API pricing</div>
+                    <div class="hero-label">API Cost (Local History)</div>
+                    <div class="hero-sublabel">From local machine storage</div>
                 </div>
             </div>
 
@@ -335,9 +335,9 @@ class DashboardViewProvider {
                 </div>
             </div>
 
-            <!-- Lifetime Section -->
+            <!-- Local History Section -->
             <div class="section">
-                <div class="section-header-bar lifetime">Lifetime</div>
+                <div class="section-header-bar lifetime">Local History</div>
                 <div class="stat-row">
                     <div class="stat-box">
                         <div class="stat-value messages">${this.formatNumberCompact(data.allTime.messages)}</div>
@@ -405,8 +405,8 @@ class DashboardViewProvider {
             <div class="section">
                 <div class="hero">
                     <div class="hero-value">${this.formatCost(data.allTime.cost)}</div>
-                    <div class="hero-label">API Cost (Lifetime)</div>
-                    <div class="hero-sublabel">Equivalent per-token API pricing</div>
+                    <div class="hero-label">API Cost (Local History)</div>
+                    <div class="hero-sublabel">From local machine storage</div>
                 </div>
             </div>
 
