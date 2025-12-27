@@ -1,10 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output (keep out/ for distribution)
-# out/
+# Build output (compiled JS - users should install from VS Code Marketplace)
+out/
 
-# Package files
+# Package files (install from VS Code Marketplace only)
 *.vsix
 
 # Editor settings
@@ -22,3 +22,4 @@ yarn.lock
 # Logs
 *.log
 npm-debug.log*
+__pycache__/

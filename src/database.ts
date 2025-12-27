@@ -19,7 +19,36 @@ function getDbPath(): string {
 }
 
 // Schema version for migrations
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+// Machine ID for multi-computer sync
+let machineId: string | null = null;
+
+/**
+ * Get or generate a unique machine ID
+ */
+export function getMachineId(): string {
+    if (machineId) return machineId;
+
+    if (db) {
+        const stored = getMetadata(db, 'machine_id');
+        if (stored) {
+            machineId = stored;
+            return machineId;
+        }
+    }
+
+    // Generate new machine ID based on hostname + random suffix
+    const hostname = os.hostname();
+    const random = Math.random().toString(36).substring(2, 8);
+    machineId = `${hostname}-${random}`;
+
+    if (db) {
+        setMetadata(db, 'machine_id', machineId);
+    }
+
+    return machineId;
+}
 
 /**
  * Initialize the SQLite database (creates tables if needed)
@@ -132,15 +161,32 @@ function runMigrations(database: Database): void {
     const version = currentVersion ? parseInt(currentVersion, 10) : 0;
 
     if (version < SCHEMA_VERSION) {
-        // Future migrations go here
-        // if (version < 2) { ... migrate to v2 ... }
+        // Migration to v2: Add machine_id column
+        if (version < 2) {
+            try {
+                database.run(`ALTER TABLE daily_snapshots ADD COLUMN machine_id TEXT DEFAULT 'local'`);
+                database.run(`ALTER TABLE model_usage ADD COLUMN machine_id TEXT DEFAULT 'local'`);
+            } catch (e) {
+                // Column may already exist
+            }
+        }
 
         setMetadata(database, 'schema_version', SCHEMA_VERSION.toString());
+    }
+
+    // Ensure machine ID is stored
+    if (!getMetadata(database, 'machine_id')) {
+        const hostname = os.hostname();
+        const random = Math.random().toString(36).substring(2, 8);
+        machineId = `${hostname}-${random}`;
+        setMetadata(database, 'machine_id', machineId);
+    } else {
+        machineId = getMetadata(database, 'machine_id');
     }
 }
 
 /**
- * Get metadata value
+ * Get metadata value (internal - uses provided database)
  */
 function getMetadata(database: Database, key: string): string | null {
     const result = database.exec(`SELECT value FROM metadata WHERE key = ?`, [key]);
@@ -151,10 +197,26 @@ function getMetadata(database: Database, key: string): string | null {
 }
 
 /**
- * Set metadata value
+ * Set metadata value (internal - uses provided database)
  */
 function setMetadata(database: Database, key: string, value: string): void {
     database.run(`INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)`, [key, value]);
+}
+
+/**
+ * Get metadata value (public - uses singleton db)
+ */
+export function getDbMetadata(key: string): string | null {
+    if (!db) return null;
+    return getMetadata(db, key);
+}
+
+/**
+ * Set metadata value (public - uses singleton db)
+ */
+export function setDbMetadata(key: string, value: string): void {
+    if (!db) return;
+    setMetadata(db, key, value);
 }
 
 /**
@@ -505,8 +567,9 @@ export function clearHistoryBeforeDate(beforeDate: string): number {
 }
 
 // Model pricing helper (duplicated from dataProvider to avoid circular deps)
+// Cache rates: cache_read = input * 0.1 (90% discount), cache_write = input * 1.25 (25% premium)
 const MODEL_PRICING: { [key: string]: { input: number; output: number; cacheRead: number; cacheWrite: number } } = {
-    opus: { input: 15, output: 75, cacheRead: 1.875, cacheWrite: 18.75 },
+    opus: { input: 15, output: 75, cacheRead: 1.50, cacheWrite: 18.75 },
     sonnet: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
     default: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 }
 };
@@ -516,4 +579,134 @@ function getPricingForModel(modelName: string): typeof MODEL_PRICING.default {
     if (lower.includes('opus')) return MODEL_PRICING.opus;
     if (lower.includes('sonnet')) return MODEL_PRICING.sonnet;
     return MODEL_PRICING.default;
+}
+
+/**
+ * Truncate all data (for recalculate/reset)
+ */
+export function truncateAllData(): void {
+    if (!db) return;
+
+    try {
+        db.run(`DELETE FROM daily_snapshots`);
+        db.run(`DELETE FROM model_usage`);
+        saveDatabase();
+        console.log('Claude Analytics: Database truncated');
+    } catch (error) {
+        console.error('Claude Analytics: Failed to truncate database:', error);
+    }
+}
+
+/**
+ * Export all data for Gist sync (with machine ID)
+ */
+export function exportForGistSync(): { snapshots: any[]; modelUsage: any[]; machineId: string; metadata: any } {
+    const currentMachineId = getMachineId();
+
+    const snapshots = getAllDailySnapshots().map(s => ({
+        ...s,
+        machine_id: currentMachineId
+    }));
+
+    const modelUsage = getAllModelUsage().map(m => ({
+        ...m,
+        machine_id: currentMachineId
+    }));
+
+    return {
+        snapshots,
+        modelUsage,
+        machineId: currentMachineId,
+        metadata: {
+            exportedAt: new Date().toISOString(),
+            version: '2.0'
+        }
+    };
+}
+
+/**
+ * Import and merge data from Gist (combines data from multiple machines)
+ */
+export function importAndMergeFromGist(gistData: { snapshots: any[]; modelUsage: any[]; machineId: string }): { imported: number; merged: number } {
+    if (!db) return { imported: 0, merged: 0 };
+
+    const currentMachineId = getMachineId();
+    let imported = 0;
+    let merged = 0;
+
+    // Get existing dates for this machine
+    const existingDates = getExistingDates();
+
+    // Process snapshots - add data from other machines
+    for (const snapshot of gistData.snapshots || []) {
+        const remoteMachineId = snapshot.machine_id || gistData.machineId || 'unknown';
+
+        // Skip if this is our own data (we already have it)
+        if (remoteMachineId === currentMachineId) {
+            continue;
+        }
+
+        // Check if we have this date already
+        if (existingDates.has(snapshot.date)) {
+            // Merge: update existing record by adding remote values
+            const existing = db.exec(`SELECT cost, messages, tokens, sessions FROM daily_snapshots WHERE date = ?`, [snapshot.date]);
+            if (existing.length > 0 && existing[0].values.length > 0) {
+                const row = existing[0].values[0];
+                const newCost = (row[0] as number) + (snapshot.cost || 0);
+                const newMessages = (row[1] as number) + (snapshot.messages || 0);
+                const newTokens = (row[2] as number) + (snapshot.tokens || 0);
+                const newSessions = (row[3] as number) + (snapshot.sessions || 0);
+
+                db.run(`UPDATE daily_snapshots SET cost = ?, messages = ?, tokens = ?, sessions = ? WHERE date = ?`,
+                    [newCost, newMessages, newTokens, newSessions, snapshot.date]);
+                merged++;
+            }
+        } else {
+            // Insert new record
+            saveDailySnapshot({
+                date: snapshot.date,
+                cost: snapshot.cost || 0,
+                messages: snapshot.messages || 0,
+                tokens: snapshot.tokens || 0,
+                sessions: snapshot.sessions || 0
+            });
+            imported++;
+        }
+    }
+
+    // Process model usage similarly
+    for (const usage of gistData.modelUsage || []) {
+        const remoteMachineId = usage.machine_id || gistData.machineId || 'unknown';
+
+        if (remoteMachineId === currentMachineId) {
+            continue;
+        }
+
+        // Check existing
+        const existing = db.exec(`SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM model_usage WHERE date = ? AND model = ?`,
+            [usage.date, usage.model]);
+
+        if (existing.length > 0 && existing[0].values.length > 0) {
+            // Merge by adding
+            const row = existing[0].values[0];
+            db.run(`UPDATE model_usage SET input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ? WHERE date = ? AND model = ?`,
+                [(row[0] as number) + (usage.inputTokens || 0),
+                 (row[1] as number) + (usage.outputTokens || 0),
+                 (row[2] as number) + (usage.cacheReadTokens || 0),
+                 (row[3] as number) + (usage.cacheWriteTokens || 0),
+                 usage.date, usage.model]);
+        } else {
+            saveModelUsage({
+                date: usage.date,
+                model: usage.model,
+                inputTokens: usage.inputTokens || 0,
+                outputTokens: usage.outputTokens || 0,
+                cacheReadTokens: usage.cacheReadTokens || 0,
+                cacheWriteTokens: usage.cacheWriteTokens || 0
+            });
+        }
+    }
+
+    saveDatabase();
+    return { imported, merged };
 }

@@ -5,7 +5,7 @@
   "version": "1.1.0",
   "publisher": "analyticendeavors",
   "icon": "media/icon.png",
-  "license": "MIT",
+  "license": "MIT WITH Commons-Clause",
   "repository": {
     "type": "git",
     "url": "https://github.com/analyticendeavors/claude-usage-analytics"
@@ -14,6 +14,12 @@
     "url": "https://github.com/analyticendeavors/claude-usage-analytics/issues"
   },
   "homepage": "https://github.com/analyticendeavors/claude-usage-analytics#readme",
+  "__attribution": {
+    "creator": "Reid Havens",
+    "company": "Analytic Endeavors",
+    "website": "https://analyticendeavors.com",
+    "copyright": "2024-2025"
+  },
   "engines": {
     "vscode": "^1.95.0"
   },
@@ -94,10 +100,40 @@
         "command": "claudeUsage.clearHistory",
         "title": "Claude Analytics: Clear History Before Date",
         "icon": "$(trash)"
+      },
+      {
+        "command": "claudeUsage.recalculateHistory",
+        "title": "Claude Analytics: Recalculate Historical Costs",
+        "icon": "$(history)"
+      },
+      {
+        "command": "claudeUsage.refreshLiveStats",
+        "title": "Scan Live Today Stats",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "claudeUsage.syncToGist",
+        "title": "Claude Analytics: Sync to Gist",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "claudeUsage.importFromGist",
+        "title": "Claude Analytics: Import from Gist",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "claudeUsage.configureGistSync",
+        "title": "Claude Analytics: Configure Gist Sync",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "claudeUsage.refreshLiveStats",
+          "when": "view == claudeUsage.dashboard",
+          "group": "navigation"
+        },
         {
           "command": "claudeUsage.refresh",
           "when": "view == claudeUsage.dashboard",
@@ -125,13 +161,6 @@
     "configuration": {
       "title": "Claude Usage Analytics",
       "properties": {
-        "claudeUsage.refreshIntervalMinutes": {
-          "type": "number",
-          "default": 2,
-          "minimum": 1,
-          "maximum": 60,
-          "description": "How often to auto-refresh usage data (in minutes)"
-        },
         "claudeUsage.showLifetimeCost": {
           "type": "boolean",
           "default": true,
@@ -167,13 +196,6 @@
           "default": true,
           "description": "Show rate limits in status bar"
         },
-        "claudeUsage.conversationCacheHours": {
-          "type": "number",
-          "default": 1,
-          "minimum": 0.5,
-          "maximum": 24,
-          "description": "How long to cache conversation analysis (in hours). Lower = more accurate but slower."
-        },
         "claudeUsage.dailyBudget": {
           "type": "number",
           "default": 0,
@@ -181,19 +203,32 @@
           "maximum": 1000,
           "description": "Daily spending budget in dollars (0 = no budget). Status bar turns yellow at 70%, red at 90%."
         },
-        "claudeUsage.weeklyBudget": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "maximum": 10000,
-          "description": "Weekly spending budget in dollars (0 = no budget)."
-        },
         "claudeUsage.costAlertThreshold": {
           "type": "number",
           "default": 0,
           "minimum": 0,
           "maximum": 100,
           "description": "Show alert notification when daily cost exceeds this amount (0 = disabled)."
+        },
+        "claudeUsage.gistSync.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable backup of analytics database to GitHub Gist. See [setup instructions](https://github.com/analyticendeavors/claude-usage-analytics#github-gist-backup) for configuration steps."
+        },
+        "claudeUsage.gistSync.gistId": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "GitHub Gist ID to sync to. Leave empty to auto-create on first sync. Find your Gist ID in the URL after creating: `gist.github.com/username/<gist-id>`"
+        },
+        "claudeUsage.gistSync.token": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "GitHub Personal Access Token with 'gist' scope. Create one at [github.com/settings/tokens](https://github.com/settings/tokens) - select only the 'gist' permission."
+        },
+        "claudeUsage.gistSync.autoSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sync to Gist after each data update (requires token configured)"
         }
       }
     }

@@ -40,6 +40,8 @@ const dashboardView_1 = require("./dashboardView");
 const statusBar_1 = require("./statusBar");
 const dataProvider_1 = require("./dataProvider");
 const database_1 = require("./database");
+const backfillManager_1 = require("./backfillManager");
+const gistSync_1 = require("./gistSync");
 let statusBarManager;
 let dashboardProvider;
 let lastAlertDate = '';
@@ -47,9 +49,40 @@ let lastAlertedAmount = 0;
 async function activate(context) {
     console.log('Claude Usage Analytics is now active');
     // Initialize database and import any cached data
-    (0, dataProvider_1.initializeDataWithDatabase)().then(result => {
+    (0, dataProvider_1.initializeDataWithDatabase)().then(async (result) => {
         if (result.imported > 0) {
             vscode.window.showInformationMessage(`Claude Analytics: Imported ${result.imported} days of historical data.`);
+        }
+        // Check if this is first install - prompt for historical backfill
+        const hasPrompted = (0, database_1.getDbMetadata)('first_install_prompted');
+        if (!hasPrompted) {
+            // Mark as prompted immediately to avoid re-prompting on restart
+            (0, database_1.setDbMetadata)('first_install_prompted', new Date().toISOString());
+            (0, database_1.saveDatabase)();
+            // Wait a moment for extension to fully load
+            setTimeout(async () => {
+                const choice = await vscode.window.showInformationMessage('Claude Analytics: Would you like to scan your Claude Code history for accurate cost data? ' +
+                    'This may take several minutes for large histories.', { modal: false }, 'Scan History', 'Skip (Use Estimates)', 'Remind Me Later');
+                if (choice === 'Scan History') {
+                    try {
+                        const result = await (0, backfillManager_1.runBackfillWithProgress)(context.extensionPath, false);
+                        vscode.window.showInformationMessage(`Claude Analytics: Scanned ${result.filesScanned} files, ` +
+                            `imported ${result.daysImported} days of accurate cost data.`);
+                        dashboardProvider.refresh();
+                        statusBarManager.refresh();
+                    }
+                    catch (error) {
+                        vscode.window.showErrorMessage(`Claude Analytics: Scan failed - ${error.message}. ` +
+                            `You can try again later with "Claude Analytics: Recalculate Historical Costs" command.`);
+                    }
+                }
+                else if (choice === 'Remind Me Later') {
+                    // Reset the prompt flag so it asks again next time
+                    (0, database_1.setDbMetadata)('first_install_prompted', '');
+                    (0, database_1.saveDatabase)();
+                }
+                // 'Skip' or dismiss: prompt flag stays set, won't ask again
+            }, 5000);
         }
     }).catch(err => {
         console.error('Failed to initialize database:', err);
@@ -64,12 +97,6 @@ async function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.refresh', () => {
         dashboardProvider.refresh();
         statusBarManager.refresh();
-    }));
-    // Register open web dashboard command
-    context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.openWebDashboard', () => {
-        const terminal = vscode.window.createTerminal('Claude Usage Web');
-        terminal.sendText('ccu web');
-        terminal.show();
     }));
     // Register show panel command
     context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.showPanel', () => {
@@ -194,8 +221,74 @@ async function activate(context) {
             }
         }
     }));
+    // Register recalculate historical costs command (backfill from JSONL)
+    context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.recalculateHistory', async () => {
+        const confirm = await vscode.window.showWarningMessage('This will CLEAR all existing calculated data and rescan all Claude Code JSONL files from scratch. This may take a few minutes for large histories.', { modal: true }, 'Continue');
+        if (confirm !== 'Continue')
+            return;
+        try {
+            // Truncate existing data first for clean recalculation
+            (0, database_1.truncateAllData)();
+            const result = await (0, backfillManager_1.runBackfillWithProgress)(context.extensionPath, false);
+            vscode.window.showInformationMessage(`Recalculated costs for ${result.daysImported} days from ${result.filesScanned} files.`);
+            // Refresh dashboard to show updated costs
+            dashboardProvider.refresh();
+            statusBarManager.refresh();
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Recalculation failed: ${error.message}`);
+        }
+    }));
+    // Register Gist sync commands
+    context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.syncToGist', async () => {
+        await (0, gistSync_1.syncToGist)();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.importFromGist', async () => {
+        await (0, gistSync_1.importFromGist)();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.configureGistSync', () => {
+        (0, gistSync_1.openGistSettings)();
+    }));
+    // Register live stats refresh command
+    context.subscriptions.push(vscode.commands.registerCommand('claudeUsage.refreshLiveStats', async () => {
+        const { execFile } = require('child_process');
+        const path = require('path');
+        const scriptPath = path.join(context.extensionPath, 'tools', 'scan-today.js');
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Scanning today's Claude usage...",
+            cancellable: false
+        }, () => {
+            return new Promise((resolve) => {
+                execFile('node', [scriptPath], { timeout: 30000 }, (error, stdout, stderr) => {
+                    if (error) {
+                        vscode.window.showErrorMessage(`Scan failed: ${error.message}`);
+                        resolve();
+                        return;
+                    }
+                    try {
+                        const stats = JSON.parse(stdout.trim());
+                        // Store live stats in dataProvider
+                        (0, dataProvider_1.setLiveStats)(stats);
+                        // Refresh dashboard to show new data
+                        dashboardProvider.refresh();
+                        statusBarManager.refresh();
+                        vscode.window.showInformationMessage(`Today: ${stats.messages} messages, ${stats.totalTokens.toLocaleString()} tokens, $${stats.cost.toFixed(2)} cost`);
+                    }
+                    catch (e) {
+                        vscode.window.showErrorMessage('Failed to parse scan results');
+                    }
+                    resolve();
+                });
+            });
+        });
+    }));
     // Initial status bar update (fast - uses cached data only)
     statusBarManager.refresh();
+    // Auto-scan today's stats on startup (after a short delay to not block activation)
+    setTimeout(() => {
+        vscode.commands.executeCommand('claudeUsage.refreshLiveStats');
+    }, 3000);
     // Auto-refresh every 2 minutes (status bar only - lightweight)
     const refreshInterval = setInterval(() => {
         statusBarManager.refresh();
@@ -239,4 +332,9 @@ function deactivate() {
         statusBarManager.dispose();
     }
 }
+// Attribution fingerprint - proves origin if code is stolen
+const _ae = { a: 'Analytic Endeavors', c: 'Reid Havens', y: '2024-2025', u: 'https://analyticendeavors.com', v: '1.1.0' };
+const _sig = Buffer.from('QW5hbHl0aWMgRW5kZWF2b3JzIC0gUmVpZCBIYXZlbnM=', 'base64').toString();
+void _ae;
+void _sig;
 //# sourceMappingURL=extension.js.map

@@ -33,6 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.setLiveStats = setLiveStats;
+exports.getLiveStats = getLiveStats;
 exports.initializeDataWithDatabase = initializeDataWithDatabase;
 exports.getDebugStats = getDebugStats;
 exports.getUsageData = getUsageData;
@@ -42,6 +44,55 @@ const os = __importStar(require("os"));
 const database_1 = require("./database");
 // Track if database has been initialized
 let dbInitialized = false;
+// Live stats from JSONL scanning (updated by scan command)
+let liveStats = null;
+/**
+ * Set live stats from JSONL scan (called by scan command)
+ * Also persists to SQLite for accurate historical tracking
+ */
+function setLiveStats(stats) {
+    liveStats = {
+        date: stats.date,
+        cost: stats.cost,
+        messages: stats.messages,
+        tokens: stats.totalTokens || stats.tokens || 0
+    };
+    // Persist to SQLite for accurate historical data
+    if (dbInitialized && stats.models) {
+        try {
+            // Save per-model usage breakdown
+            for (const [model, modelStats] of Object.entries(stats.models)) {
+                (0, database_1.saveModelUsage)({
+                    date: stats.date,
+                    model,
+                    inputTokens: modelStats.inputTokens || 0,
+                    outputTokens: modelStats.outputTokens || 0,
+                    cacheReadTokens: modelStats.cacheReadTokens || 0,
+                    cacheWriteTokens: modelStats.cacheWriteTokens || 0
+                });
+            }
+            // Save daily snapshot
+            (0, database_1.saveDailySnapshot)({
+                date: stats.date,
+                cost: stats.cost,
+                messages: stats.messages,
+                tokens: stats.totalTokens || stats.tokens || 0,
+                sessions: 0 // Not tracked in live scan
+            });
+            // Persist to disk
+            (0, database_1.saveDatabase)();
+        }
+        catch (e) {
+            console.error('Failed to persist live stats to SQLite:', e);
+        }
+    }
+}
+/**
+ * Get live stats (for display purposes)
+ */
+function getLiveStats() {
+    return liveStats;
+}
 // Helper to get local date string (YYYY-MM-DD) without timezone issues
 function getLocalDateString(date = new Date()) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -74,8 +125,9 @@ function getConversationStatsPath() {
     return path.join(os.homedir(), '.claude', 'conversation-stats-cache.json');
 }
 // Model pricing per 1M tokens
+// Cache rates: cache_read = input * 0.1 (90% discount), cache_write = input * 1.25 (25% premium)
 const MODEL_PRICING = {
-    opus: { input: 15, output: 75, cacheRead: 1.875, cacheWrite: 18.75 },
+    opus: { input: 15, output: 75, cacheRead: 1.50, cacheWrite: 18.75 },
     sonnet: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
     default: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 }
 };
@@ -100,6 +152,48 @@ function calculateDayCost(tokensByModel) {
         cost += (tokens / 1000000) * avgRate;
     }
     return cost;
+}
+/**
+ * Calculate accurate cost using SQLite model_usage data (has full token breakdown)
+ */
+function calculateAccurateCostFromModelUsage(records) {
+    let cost = 0;
+    for (const record of records) {
+        const pricing = getPricingForModel(record.model);
+        cost += (record.inputTokens / 1000000) * pricing.input +
+            (record.outputTokens / 1000000) * pricing.output +
+            (record.cacheReadTokens / 1000000) * pricing.cacheRead +
+            (record.cacheWriteTokens / 1000000) * pricing.cacheWrite;
+    }
+    return cost;
+}
+/**
+ * Get accurate daily costs from SQLite model_usage table
+ * Returns a map of date -> accurate cost
+ */
+function getAccurateDailyCosts() {
+    const dailyCosts = new Map();
+    try {
+        const allModelUsage = (0, database_1.getAllModelUsage)();
+        // Group by date
+        const byDate = new Map();
+        for (const record of allModelUsage) {
+            if (!byDate.has(record.date)) {
+                byDate.set(record.date, []);
+            }
+            byDate.get(record.date).push(record);
+        }
+        // Calculate accurate cost per day
+        for (const [date, records] of byDate) {
+            const cost = calculateAccurateCostFromModelUsage(records);
+            const tokens = records.reduce((sum, r) => sum + r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens, 0);
+            dailyCosts.set(date, { cost: Math.round(cost * 100) / 100, tokens });
+        }
+    }
+    catch (e) {
+        // Fallback: return empty map, will use stats-cache estimates
+    }
+    return dailyCosts;
 }
 /**
  * Read cached conversation stats (fast - just reads a JSON file)
@@ -133,15 +227,18 @@ function getDebugStats() {
  * This ensures the extension never blocks VS Code
  */
 function getUsageData() {
+    const emptyAccountTotal = {
+        cost: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
+        cacheReadTokens: 0, cacheWriteTokens: 0, messages: 0, sessions: 0
+    };
     const defaultData = {
         limits: {
             session: { percentage: 0, current: 0, limit: 1 },
             weekly: { percentage: 0, current: 0, limit: 1 }
         },
-        accountTotal: {
-            cost: 0, tokens: 0, inputTokens: 0, outputTokens: 0,
-            cacheReadTokens: 0, cacheWriteTokens: 0, messages: 0, sessions: 0
-        },
+        accountTotal: { ...emptyAccountTotal },
+        accountTotalApi: { ...emptyAccountTotal },
+        accountTotalCalculated: { ...emptyAccountTotal },
         last14Days: {
             cost: 0, messages: 0, tokens: 0,
             avgDayCost: 0, avgDayMessages: 0, avgDayTokens: 0, daysActive: 0
@@ -174,7 +271,9 @@ function getUsageData() {
         defaultData.allTime.sessions = statsCache.totalSessions || 0;
         defaultData.accountTotal.messages = statsCache.totalMessages || 0;
         defaultData.accountTotal.sessions = statsCache.totalSessions || 0;
-        // === ACCOUNT TOTAL (lifetime aggregates from modelUsage) ===
+        defaultData.accountTotalApi.messages = statsCache.totalMessages || 0;
+        defaultData.accountTotalApi.sessions = statsCache.totalSessions || 0;
+        // === ACCOUNT TOTAL API (lifetime aggregates from Claude's stats-cache) ===
         if (statsCache.modelUsage) {
             let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
             let accountCost = 0;
@@ -195,6 +294,14 @@ function getUsageData() {
                 accountCost += (cacheRead / 1000000) * pricing.cacheRead;
                 accountCost += (cacheWrite / 1000000) * pricing.cacheWrite;
             }
+            // Populate API source
+            defaultData.accountTotalApi.inputTokens = totalInput;
+            defaultData.accountTotalApi.outputTokens = totalOutput;
+            defaultData.accountTotalApi.cacheReadTokens = totalCacheRead;
+            defaultData.accountTotalApi.cacheWriteTokens = totalCacheWrite;
+            defaultData.accountTotalApi.tokens = totalInput + totalOutput + totalCacheRead + totalCacheWrite;
+            defaultData.accountTotalApi.cost = accountCost;
+            // Also set accountTotal (default view) to API data
             defaultData.accountTotal.inputTokens = totalInput;
             defaultData.accountTotal.outputTokens = totalOutput;
             defaultData.accountTotal.cacheReadTokens = totalCacheRead;
@@ -205,6 +312,40 @@ function getUsageData() {
             if (totalInput + totalCacheRead > 0) {
                 defaultData.funStats.cacheHitRatio = Math.round((totalCacheRead / (totalInput + totalCacheRead)) * 100);
                 defaultData.funStats.cacheSavings = (totalCacheRead / 1000000) * (3 - 0.30); // Sonnet savings estimate
+            }
+        }
+        // === ACCOUNT TOTAL CALCULATED (from SQLite model_usage - accurate with all token types) ===
+        if (dbInitialized) {
+            try {
+                const allModelUsage = (0, database_1.getAllModelUsage)();
+                if (allModelUsage.length > 0) {
+                    let calcInput = 0, calcOutput = 0, calcCacheRead = 0, calcCacheWrite = 0;
+                    let calcCost = 0;
+                    for (const record of allModelUsage) {
+                        const pricing = getPricingForModel(record.model);
+                        calcInput += record.inputTokens;
+                        calcOutput += record.outputTokens;
+                        calcCacheRead += record.cacheReadTokens;
+                        calcCacheWrite += record.cacheWriteTokens;
+                        calcCost += (record.inputTokens / 1000000) * pricing.input;
+                        calcCost += (record.outputTokens / 1000000) * pricing.output;
+                        calcCost += (record.cacheReadTokens / 1000000) * pricing.cacheRead;
+                        calcCost += (record.cacheWriteTokens / 1000000) * pricing.cacheWrite;
+                    }
+                    defaultData.accountTotalCalculated.inputTokens = calcInput;
+                    defaultData.accountTotalCalculated.outputTokens = calcOutput;
+                    defaultData.accountTotalCalculated.cacheReadTokens = calcCacheRead;
+                    defaultData.accountTotalCalculated.cacheWriteTokens = calcCacheWrite;
+                    defaultData.accountTotalCalculated.tokens = calcInput + calcOutput + calcCacheRead + calcCacheWrite;
+                    defaultData.accountTotalCalculated.cost = Math.round(calcCost * 100) / 100;
+                    // Message count and session count from SQLite (sessions now tracked from JSONL directories)
+                    const dbStats = (0, database_1.getTotalStats)();
+                    defaultData.accountTotalCalculated.messages = dbStats.totalMessages;
+                    defaultData.accountTotalCalculated.sessions = dbStats.totalSessions || 0;
+                }
+            }
+            catch (e) {
+                console.error('Error calculating from SQLite:', e);
             }
         }
         // === DATE RANGE ===
@@ -255,17 +396,14 @@ function getUsageData() {
             defaultData.allTime.totalTokens = totalTokens;
             defaultData.allTime.cacheTokens = 0; // Can't determine from daily breakdown
             defaultData.models = models.sort((a, b) => b.tokens - a.tokens).slice(0, 5);
-            // Cache efficiency - estimate from daily data (not available in daily breakdown)
-            // Set reasonable defaults since we can't calculate from daily data
-            defaultData.funStats.cacheHitRatio = 0;
-            defaultData.funStats.cacheSavings = 0;
+            // Note: Cache efficiency is already calculated from modelUsage above, don't overwrite
         }
         // === DAILY HISTORY (from dailyActivity + dailyModelTokens) ===
         const todayStr = getLocalDateString();
         const yesterdayDate = new Date();
         yesterdayDate.setDate(yesterdayDate.getDate() - 1);
         const yesterdayStr = getLocalDateString(yesterdayDate);
-        // Build a map of date -> tokens by model for accurate cost calculation
+        // Build a map of date -> tokens by model for cost calculation (from stats-cache)
         const dailyTokensMap = {};
         if (statsCache.dailyModelTokens && Array.isArray(statsCache.dailyModelTokens)) {
             for (const day of statsCache.dailyModelTokens) {
@@ -274,15 +412,19 @@ function getUsageData() {
                 }
             }
         }
-        // Build daily history with accurate costs
+        // Get accurate costs from SQLite model_usage (if backfill was run)
+        const accurateDailyCosts = getAccurateDailyCosts();
+        // Build daily history with costs (prefer accurate SQLite data over stats-cache estimates)
         let peakMessages = 0, peakDate = '', highestCost = 0;
         const daysWithActivity = new Set();
         if (statsCache.dailyActivity && Array.isArray(statsCache.dailyActivity)) {
             for (const day of statsCache.dailyActivity.slice(-90)) { // Last 90 days
                 const messages = day.messageCount || 0;
                 const tokensByModel = dailyTokensMap[day.date] || {};
-                const dayTokens = Object.values(tokensByModel).reduce((sum, t) => sum + (t || 0), 0);
-                const cost = calculateDayCost(tokensByModel);
+                // Use accurate cost from SQLite if available, otherwise estimate from stats-cache
+                const accurateData = accurateDailyCosts.get(day.date);
+                const dayTokens = accurateData ? accurateData.tokens : Object.values(tokensByModel).reduce((sum, t) => sum + (t || 0), 0);
+                const cost = accurateData ? accurateData.cost : calculateDayCost(tokensByModel);
                 defaultData.dailyHistory.push({
                     date: day.date,
                     messages,
@@ -397,6 +539,20 @@ function getUsageData() {
                 console.error('Error merging SQLite data:', dbError);
             }
         }
+        // === MERGE LIVE STATS (from JSONL scan) ===
+        if (liveStats && liveStats.date === todayStr) {
+            // Use live stats for today (more accurate than cache)
+            defaultData.today.messages = liveStats.messages;
+            defaultData.today.tokens = liveStats.tokens;
+            defaultData.today.cost = liveStats.cost;
+            // Also update today in dailyHistory if present
+            const todayInHistory = defaultData.dailyHistory.find(d => d.date === todayStr);
+            if (todayInHistory) {
+                todayInHistory.messages = liveStats.messages;
+                todayInHistory.tokens = liveStats.tokens;
+                todayInHistory.cost = liveStats.cost;
+            }
+        }
         // === LAST 14 DAYS CALCULATION ===
         const last14DaysData = defaultData.dailyHistory.slice(-14);
         if (last14DaysData.length > 0) {
@@ -418,17 +574,21 @@ function getUsageData() {
             defaultData.last14Days.avgDayTokens = Math.round(sum14Tokens / 14);
         }
         // === STREAK CALCULATION ===
+        // Count consecutive days with activity, allowing today to be missing (cache may not be updated yet)
         let streak = 0;
-        if (daysWithActivity.has(todayStr) || daysWithActivity.has(yesterdayStr)) {
-            const checkDate = new Date();
-            for (let i = 0; i < 365; i++) {
-                if (daysWithActivity.has(getLocalDateString(checkDate))) {
-                    streak++;
-                    checkDate.setDate(checkDate.getDate() - 1);
-                }
-                else {
-                    break;
-                }
+        const checkDate = new Date();
+        // If today has no activity, start from yesterday (cache might not be updated yet)
+        if (!daysWithActivity.has(todayStr)) {
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+        // Count consecutive days going backwards
+        for (let i = 0; i < 365; i++) {
+            if (daysWithActivity.has(getLocalDateString(checkDate))) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            }
+            else {
+                break;
             }
         }
         defaultData.funStats.streak = streak;
@@ -443,28 +603,49 @@ function getUsageData() {
         }
         defaultData.funStats.weekendScore = totalDailyMessages > 0
             ? Math.round((weekendMessages / totalDailyMessages) * 100) : 0;
-        // === PEAK HOUR ===
+        // === PEAK HOUR & NIGHT OWL / EARLY BIRD ===
+        // Merge hourCounts from Claude Code cache and conversation-stats-cache
+        const mergedHourCounts = {};
+        // Add from Claude Code cache
         if (statsCache.hourCounts) {
-            const hours = Object.entries(statsCache.hourCounts);
-            if (hours.length > 0) {
-                hours.sort((a, b) => b[1] - a[1]);
-                const peakHourNum = parseInt(hours[0][0]);
-                const ampm = peakHourNum >= 12 ? 'PM' : 'AM';
-                const hour12 = peakHourNum % 12 || 12;
-                defaultData.funStats.peakHour = `${hour12} ${ampm}`;
-                // Night owl & early bird
-                const totalHourMsgs = hours.reduce((sum, h) => sum + h[1], 0);
-                let nightOwl = 0, earlyBird = 0;
-                for (const [h, count] of hours) {
-                    const hr = parseInt(h);
-                    if (hr >= 21 || hr <= 4)
-                        nightOwl += count;
-                    if (hr >= 5 && hr <= 8)
-                        earlyBird += count;
-                }
-                defaultData.funStats.nightOwlScore = totalHourMsgs > 0 ? Math.round((nightOwl / totalHourMsgs) * 100) : 0;
-                defaultData.funStats.earlyBirdScore = totalHourMsgs > 0 ? Math.round((earlyBird / totalHourMsgs) * 100) : 0;
+            for (const [hour, count] of Object.entries(statsCache.hourCounts)) {
+                mergedHourCounts[hour] = (mergedHourCounts[hour] || 0) + count;
             }
+        }
+        // Also read from conversation-stats-cache.json (populated by backfill)
+        try {
+            const convCachePath = getConversationStatsPath();
+            if (fs.existsSync(convCachePath)) {
+                const convCache = JSON.parse(fs.readFileSync(convCachePath, 'utf8'));
+                if (convCache.hourCounts) {
+                    for (const [hour, count] of Object.entries(convCache.hourCounts)) {
+                        mergedHourCounts[hour] = (mergedHourCounts[hour] || 0) + count;
+                    }
+                }
+            }
+        }
+        catch (e) {
+            // Ignore errors reading conversation cache
+        }
+        const hours = Object.entries(mergedHourCounts);
+        if (hours.length > 0) {
+            hours.sort((a, b) => b[1] - a[1]);
+            const peakHourNum = parseInt(hours[0][0]);
+            const ampm = peakHourNum >= 12 ? 'PM' : 'AM';
+            const hour12 = peakHourNum % 12 || 12;
+            defaultData.funStats.peakHour = `${hour12} ${ampm}`;
+            // Night owl & early bird
+            const totalHourMsgs = hours.reduce((sum, h) => sum + h[1], 0);
+            let nightOwl = 0, earlyBird = 0;
+            for (const [h, count] of hours) {
+                const hr = parseInt(h);
+                if (hr >= 21 || hr <= 4)
+                    nightOwl += count;
+                if (hr >= 5 && hr <= 8)
+                    earlyBird += count;
+            }
+            defaultData.funStats.nightOwlScore = totalHourMsgs > 0 ? Math.round((nightOwl / totalHourMsgs) * 100) : 0;
+            defaultData.funStats.earlyBirdScore = totalHourMsgs > 0 ? Math.round((earlyBird / totalHourMsgs) * 100) : 0;
         }
         // === LONGEST SESSION ===
         if (statsCache.longestSession) {

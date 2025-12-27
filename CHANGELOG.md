@@ -2,14 +2,48 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
-## [1.0.0] - 2025-12-21
+## [1.1.0] - 2025-12-22
+
+### Added
+- **SQLite persistence** - Usage history now preserved forever in a local SQLite database, surviving Claude Code's 30-day rolling window
+- **Historical data import** - On first install, automatically imports existing data from stats-cache.json
+- **Local history stats** - "Local History" totals now include full data from your local SQLite database, not just the last 30 days
+- **7 new achievements** - Token Titan (1M+ tokens), $100 Club, $500 Spender, $1K Whale, Refactor Pro, Refactor King, Weekend Warrior
+- **Export to CSV/JSON** - Export your usage data via dashboard button or view title menu
+- **Budget tracking** - New `dailyBudget` and `weeklyBudget` settings with status bar color coding (green/yellow/red)
+- **Cost alerts** - New `costAlertThreshold` setting triggers VS Code notifications when daily cost exceeds threshold
+- **Date range filter** - Filter dashboard stats by Last 7 days, Last 30 days, This Month, or All Time
+- **Session breakdown** - New section in Messages tab showing recent sessions with project, messages, tokens, and cost
+- **Activity heatmap** - GitHub-style contribution calendar on Personality tab showing last 90 days of activity
+- **Theme-aware colors** - All UI elements now adapt to light and dark VS Code themes
+- **Backfill script** - Python script to import full Claude.ai conversation history from data export
+- **Personality analytics** - Request types, sentiment tracking, and celebration moments
+
+### Changed
+- Chart toggle buttons now use emojis (messages, cost, tokens)
+- Footer includes Analytic Endeavors branding with logo and links
+
+## [1.0.3] - 2025-12-21
+
+### Added
+- **Real-time today's cost** - Now reads directly from conversation JSONL files for accurate current-day statistics
+- **Subscription tier display** - Shows Max 20x, Max, Pro, or Free tier instead of rate limit percentages
+- **Improved tooltips** - All status bar widgets now show "Click to open [Tab Name]" for clarity
+
+### Changed
+- **Fully offline** - Removed all network API calls; extension operates completely locally
+- **Fixed credentials reading** - Now correctly reads from `~/.claude/.credentials.json`
+
+### Removed
+- **Rate limit monitoring** - Removed Limits section and rate limit progress bars (obsolete after API changes)
+
+## [1.0.0] - 2025-12-20
 
 ### Initial Release
 
 First public release as a standalone VS Code extension.
 
 ### Features
-
 - **4-Tab Dashboard** - Interactive sidebar with Overview, Cost, Messages, and Personality tabs
 - **7 Status Bar Widgets** - Live statistics always visible:
   - Lifetime Cost with trend analysis
@@ -18,7 +52,7 @@ First public release as a standalone VS Code extension.
   - Token Count with cache efficiency
   - Personality Score with trait breakdown
   - Activity Stats with coding metrics
-  - Rate Limits with 5h/7d monitoring
+  - Subscription Tier display
 
 - **Cost Analytics**
   - Accurate pricing using model-specific rates (Opus vs Sonnet)
@@ -38,14 +72,7 @@ First public release as a standalone VS Code extension.
   - Request type distribution (debug, feature, explain, etc.)
   - Peak hours and activity patterns
 
-- **Rate Limit Monitoring**
-  - Real-time 5-hour and 7-day limit percentages
-  - Color-coded warnings (green/yellow/red)
-  - Opus-specific limits when applicable
-  - OAuth token integration
-
 ### Keyboard Shortcuts
-
 - `Ctrl+Alt+C` (`Cmd+Alt+C` on Mac) - Show Analytics Panel
 - `Ctrl+Alt+R` (`Cmd+Alt+R` on Mac) - Refresh Data
 

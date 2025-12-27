@@ -6,6 +6,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _activeTab: string = 'overview';
     private _chartView: 'messages' | 'cost' | 'tokens' = 'messages';  // Chart toggle state
+    private _dataSource: 'api' | 'calculated' = 'calculated';  // Account Total data source toggle (calculated is default)
     private _cachedData?: UsageData;  // Cache data to avoid re-fetching
     private _lastFetchTime: number = 0;
     private readonly CACHE_TTL = 30000;  // 30 second cache for data
@@ -37,6 +38,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'switchChartView':
                     this._chartView = message.view;
+                    this.updateWebview();
+                    break;
+                case 'switchDataSource':
+                    this._dataSource = message.source;
                     this.updateWebview();
                     break;
                 case 'export':
@@ -316,13 +321,28 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     private getOverviewTab(data: UsageData): string {
         const barChart = this.getBarChartSvg(data, this._chartView);
         const pieChart = this.getModelPieChart(data);
-        const acct = data.accountTotal;
+        // Select data source based on toggle
+        const acct = this._dataSource === 'calculated' ? data.accountTotalCalculated : data.accountTotalApi;
         const last14 = data.last14Days;
+        const isApi = this._dataSource === 'api';
+        const hasCalculatedData = data.accountTotalCalculated.tokens > 0;
+        const sourceLabel = isApi ? 'API Reported' : 'Calculated';
 
         return `
             <!-- Account Total Hero -->
             <div class="section">
-                <div class="section-header-bar account-total">Account Total</div>
+                <div class="section-header-bar account-total">
+                    <span>Account Total</span>
+                    <div class="data-source-toggle">
+                        <button class="toggle-btn ${isApi ? 'active' : ''}" data-source="api" title="Claude API reported stats (stats-cache.json)">
+                            <span class="toggle-icon">&#9729;</span>
+                        </button>
+                        <button class="toggle-btn ${!isApi ? 'active' : ''} ${!hasCalculatedData ? 'disabled' : ''}" data-source="calculated" title="Calculated from JSONL scan (includes all cache tokens)${!hasCalculatedData ? ' - No data yet. Run backfill or wait for daily scan.' : ''}">
+                            <span class="toggle-icon">&#128202;</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="data-source-label">${sourceLabel}</div>
                 <div class="hero" style="padding-top:4px">
                     <div class="hero-value">${this.formatCost(acct.cost)}</div>
                     <div class="hero-label">Lifetime API Cost</div>
@@ -399,9 +419,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
                     <div class="section-header">
                         <div class="section-title">${this._chartView === 'messages' ? 'Daily Messages' : this._chartView === 'cost' ? 'Daily Cost' : 'Daily Tokens'}</div>
                         <div class="chart-toggle">
-                            <button class="toggle-btn ${this._chartView === 'messages' ? 'active' : ''}" data-view="messages" style="--toggle-color: #ff8800" title="Messages">Msg</button>
-                            <button class="toggle-btn ${this._chartView === 'cost' ? 'active' : ''}" data-view="cost" style="--toggle-color: #2ed573" title="Cost">$</button>
-                            <button class="toggle-btn ${this._chartView === 'tokens' ? 'active' : ''}" data-view="tokens" style="--toggle-color: #3498db" title="Tokens">Tok</button>
+                            <button class="toggle-btn ${this._chartView === 'messages' ? 'active' : ''}" data-view="messages" style="--toggle-color: #ff8800" title="Messages">💬</button>
+                            <button class="toggle-btn ${this._chartView === 'cost' ? 'active' : ''}" data-view="cost" style="--toggle-color: #2ed573" title="Cost">💵</button>
+                            <button class="toggle-btn ${this._chartView === 'tokens' ? 'active' : ''}" data-view="tokens" style="--toggle-color: #3498db" title="Tokens">🪙</button>
                         </div>
                     </div>
                     <div class="chart-container">${barChart}</div>
@@ -914,10 +934,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     private getHtmlContent(data: UsageData): string {
         return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-ae-sig="YW5hbHl0aWNlbmRlYXZvcnMuY29t">
+<!-- Built by Analytic Endeavors (analyticendeavors.com) - Reid Havens - 2024-2025 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Reid Havens - Analytic Endeavors">
     <style>
         /* Theme-aware color variables */
         :root {
@@ -1294,6 +1316,37 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             background: var(--toggle-color, #ff8800);
             box-shadow: 0 0 4px var(--toggle-color, #ff8800);
         }
+        .toggle-btn.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .data-source-toggle {
+            display: flex;
+            gap: 4px;
+            margin-left: auto;
+        }
+        .data-source-toggle .toggle-btn {
+            --toggle-color: #3498db;
+        }
+        .data-source-toggle .toggle-btn[data-source="calculated"] {
+            --toggle-color: #2ecc71;
+        }
+        .data-source-toggle .toggle-icon {
+            font-size: 14px;
+        }
+        .data-source-label {
+            text-align: center;
+            font-size: 10px;
+            opacity: 0.6;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .section-header-bar.account-total {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
 
         /* Personality Cards - Compact */
         .personality-grid {
@@ -1388,21 +1441,59 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
             border-radius: 2px;
         }
 
-        /* Data Source Disclaimer */
-        .data-disclaimer {
+        /* Branded Footer */
+        .branded-footer {
+            text-align: center;
+            padding: 16px 10px;
+            border-top: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-sideBar-background);
+        }
+        .footer-logo {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+        }
+        .footer-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--vscode-foreground);
+            margin-bottom: 4px;
+        }
+        .footer-subtitle {
+            font-size: 9px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 10px;
+        }
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .footer-link {
+            font-size: 10px;
+            color: var(--vscode-textLink-foreground);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+        .footer-cache-note {
+            font-size: 8px;
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
+            margin-top: 8px;
+        }
+        .data-source-info {
             text-align: center;
             padding: 8px 10px;
             font-size: 9px;
             color: var(--vscode-descriptionForeground);
-            opacity: 0.7;
-            border-top: 1px solid var(--vscode-panel-border);
-        }
-        .data-disclaimer a {
-            color: var(--vscode-textLink-foreground);
-            text-decoration: none;
-        }
-        .data-disclaimer a:hover {
-            text-decoration: underline;
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -1431,14 +1522,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         </div>
     </div>
 
-    <!-- Action Button -->
-    <div style="padding: 0 10px 10px 10px;">
-        <button class="btn btn-secondary" style="width:100%" onclick="vscode.postMessage({command:'export'})">Export Data</button>
+    <!-- Data Source Info -->
+    <div class="data-source-info">
+        ${this._dataSource === 'calculated'
+            ? 'Calculated: Token breakdown from local JSONL files + SQLite history.'
+            : 'API: Aggregate totals from Claude stats-cache.json.'
+        } Toggle source in Account Total header.
     </div>
 
-    <!-- Data Source Disclaimer -->
-    <div class="data-disclaimer">
-        Data from Claude Code cache (~/.claude/stats-cache.json)
+    <!-- Branded Footer -->
+    <div class="branded-footer">
+        <img class="footer-logo" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgNDg4IDQ4OCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHN0eWxlPSJmaWxsLXJ1bGU6ZXZlbm9kZDtjbGlwLXJ1bGU6ZXZlbm9kZDtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46YmV2ZWw7c3Ryb2tlLW1pdGVybGltaXQ6OCI+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMSwwLDAsMSwtNjEuNTM4NSwtMjU4LjU4NSkiPjxnIHRyYW5zZm9ybT0ibWF0cml4KDMuNDM4NDUsMCwwLDMuNDM4NDUsNjEuNzQ0OCwxMzQuMTg2KSI+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMC4wMDc0OTk0NCwwLDAsMC4wMDc0OTk3MywwLDApIj48cGF0aCBkPSJNLTgsNzk3NEMtOCw2MjM1IDE0MDMsNDgyNCAzMTQyLDQ4MjRMMTU3MzksNDgyNEMxNzQ3OCw0ODI0IDE4ODg4LDYyMzUgMTg4ODgsNzk3NEwxODg4OCwyMDU3MUMxODg4OCwyMjMxMCAxNzQ3OCwyMzcyMCAxNTczOSwyMzcyMEwzMTQyLDIzNzIwQzE0MDMsMjM3MjAgLTgsMjIzMTAgLTgsMjA1NzFMLTgsNzk3NFoiIHN0eWxlPSJmaWxsOnJnYigxMSw1NSw3NikiLz48L2c+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDMuNDM4NDUsMCwwLDMuNDM4NDUsNjEuNzQ0OCwxMzQuMTg2KSI+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMC4wMDc1MzA3MywwLDAsMC4wMDc1MzEwMiwtMC42OTAwNDMsLTAuODkwMzUzKSI+PHBhdGggZD0iTTM0NjQsMTkxNjBMOTMzNiw4NDcyTDkzMzYsMTkxNjBMMzQ2NCwxOTE2MFoiIHN0eWxlPSJmaWxsOnJnYigwLDE4NiwxOTIpO2ZpbGwtb3BhY2l0eTowLjQxIi8+PC9nPjwvZz48ZyB0cmFuc2Zvcm09Im1hdHJpeCgzLjQzODQ1LDAsMCwzLjQzODQ1LDYxLjc0NDgsMTM0LjE4NikiPjxnIHRyYW5zZm9ybT0ibWF0cml4KDAuMDA3NDk5NDQsMCwwLDAuMDA3NDk5NzMsMC40MjkxMTgsLTAuMjkwODI5KSI+PHJlY3QgeD0iOTI0MCIgeT0iODMxMiIgd2lkdGg9IjMwMjQiIGhlaWdodD0iMjU2MCIgc3R5bGU9ImZpbGw6cmdiKDAsMTg2LDE5MikiLz48L2c+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDMuNDM4NDUsMCwwLDMuNDM4NDUsNjEuNzQ0OCwxMzQuMTg2KSI+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMC4wMDc0OTk0NCwwLDAsMC4wMDc0OTk3MywtMC4yOTA4MjksLTAuMjkwODI5KSI+PHJlY3QgeD0iOTMzNiIgeT0iMTI2MTYiIHdpZHRoPSI0NTQ0IiBoZWlnaHQ9IjIzMzYiIHN0eWxlPSJmaWxsOnJnYigwLDE4NiwxOTIpIi8+PC9nPjwvZz48ZyB0cmFuc2Zvcm09Im1hdHJpeCgzLjQzODQ1LDAsMCwzLjQzODQ1LDYxLjc0NDgsMTM0LjE4NikiPjxnIHRyYW5zZm9ybT0ibWF0cml4KDAuMDA3NDk5NDQsMCwwLDAuMDA3NDk5NzMsLTAuMjkwODI5LC0wLjI5MDgyOSkiPjxyZWN0IHg9IjkzMzYiIHk9IjE2Njk2IiB3aWR0aD0iNjA0OCIgaGVpZ2h0PSIyNDY0IiBzdHlsZT0iZmlsbDpyZ2IoMCwxODYsMTkyKSIvPjwvZz48L2c+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMy40Mzg0NSwwLDAsMy40Mzg0NSw2MS43NDQ4LDEzNC4xODYpIj48ZyB0cmFuc2Zvcm09Im1hdHJpeCgwLjAwNzQ5OTI5LDIuNzYwMjRlLTA3LDIuNzYwMzRlLTA3LDAuMDA3NDk5MjMsLTAuNTg2NDIxLC0wLjI4MjE1MSkiPjxwYXRoIGQ9Ik0zNDY0LDE5MTYwTDkzMzIsODQ3MiIgc3R5bGU9ImZpbGw6bm9uZTtzdHJva2U6cmdiKDAsMTg2LDE5Mik7c3Ryb2tlLXdpZHRoOjc5OS45OHB4Ii8+PC9nPjwvZz48ZyB0cmFuc2Zvcm09Im1hdHJpeCgzLjQzODQ1LDAsMCwzLjQzODQ1LDYxLjc0NDgsMTM0LjE4NikiPjxnIHRyYW5zZm9ybT0ibWF0cml4KDAuMDA3NDk5NDQsMCwwLDAuMDA3NDk5NzMsLTAuNTgxNjU3LC0wLjI5MDgyOSkiPjxwYXRoIGQ9Ik0zNDY0LDE4NzYwTDE0NzI4LDE4NzYwTDE0NzI4LDE5NTYwTDM0NjQsMTk1NjBMMzQ2NCwxODc2MFpNMzQ2NCwyMDM2MEMyODAyLDIwMzYwIDIyNjQsMTk4MjMgMjI2NCwxOTE2MEMyMjY0LDE4NDk4IDI4MDIsMTc5NjAgMzQ2NCwxNzk2MEM0MTI3LDE3OTYwIDQ2NjQsMTg0OTggNDY2NCwxOTE2MEM0NjY0LDE5ODIzIDQxMjcsMjAzNjAgMzQ2NCwyMDM2MFpNMTQzMjgsMTc5NjBMMTY3MjgsMTkxNjBMMTQzMjgsMjAzNjBMMTQzMjgsMTc5NjBaIiBzdHlsZT0iZmlsbDp3aGl0ZTtmaWxsLXJ1bGU6bm9uemVybztzdHJva2U6d2hpdGU7c3Ryb2tlLXdpZHRoOjFweDtzdHJva2UtbGluZWNhcDpidXR0O3N0cm9rZS1saW5lam9pbjpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMCIvPjwvZz48L2c+PC9nPjwvc3ZnPg==" alt="Analytic Endeavors" />
+        <div class="footer-title">Built by Analytic Endeavors</div>
+        <div class="footer-subtitle">Claude Code usage analytics and insights</div>
+        <div class="footer-links">
+            <a class="footer-link" href="https://github.com/analyticendeavors/claude-usage-analytics" target="_blank">GitHub</a>
+            <a class="footer-link" href="https://analyticendeavors.com/" target="_blank">Website</a>
+            <a class="footer-link" href="https://www.youtube.com/@AnalyticEndeavors" target="_blank">YouTube</a>
+        </div>
     </div>
 
     <script>
@@ -1463,10 +1564,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         });
 
         // Chart view toggle
-        document.querySelectorAll('.toggle-btn').forEach(btn => {
+        document.querySelectorAll('.toggle-btn[data-view]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const view = btn.dataset.view;
                 vscode.postMessage({ command: 'switchChartView', view });
+            });
+        });
+
+        // Data source toggle
+        document.querySelectorAll('.toggle-btn[data-source]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.classList.contains('disabled')) return;
+                const source = btn.dataset.source;
+                vscode.postMessage({ command: 'switchDataSource', source });
             });
         });
 

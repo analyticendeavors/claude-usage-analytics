@@ -33,7 +33,10 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getMachineId = getMachineId;
 exports.initDatabase = initDatabase;
+exports.getDbMetadata = getDbMetadata;
+exports.setDbMetadata = setDbMetadata;
 exports.saveDatabase = saveDatabase;
 exports.closeDatabase = closeDatabase;
 exports.saveDailySnapshot = saveDailySnapshot;
@@ -48,6 +51,9 @@ exports.getTotalStats = getTotalStats;
 exports.getExistingDates = getExistingDates;
 exports.importFromCache = importFromCache;
 exports.clearHistoryBeforeDate = clearHistoryBeforeDate;
+exports.truncateAllData = truncateAllData;
+exports.exportForGistSync = exportForGistSync;
+exports.importAndMergeFromGist = importAndMergeFromGist;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
@@ -63,7 +69,31 @@ function getDbPath() {
     return path.join(os.homedir(), '.claude', 'analytics.db');
 }
 // Schema version for migrations
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+// Machine ID for multi-computer sync
+let machineId = null;
+/**
+ * Get or generate a unique machine ID
+ */
+function getMachineId() {
+    if (machineId)
+        return machineId;
+    if (db) {
+        const stored = getMetadata(db, 'machine_id');
+        if (stored) {
+            machineId = stored;
+            return machineId;
+        }
+    }
+    // Generate new machine ID based on hostname + random suffix
+    const hostname = os.hostname();
+    const random = Math.random().toString(36).substring(2, 8);
+    machineId = `${hostname}-${random}`;
+    if (db) {
+        setMetadata(db, 'machine_id', machineId);
+    }
+    return machineId;
+}
 /**
  * Initialize the SQLite database (creates tables if needed)
  * Returns null if initialization fails - extension continues without persistence
@@ -161,13 +191,31 @@ function runMigrations(database) {
     const currentVersion = getMetadata(database, 'schema_version');
     const version = currentVersion ? parseInt(currentVersion, 10) : 0;
     if (version < SCHEMA_VERSION) {
-        // Future migrations go here
-        // if (version < 2) { ... migrate to v2 ... }
+        // Migration to v2: Add machine_id column
+        if (version < 2) {
+            try {
+                database.run(`ALTER TABLE daily_snapshots ADD COLUMN machine_id TEXT DEFAULT 'local'`);
+                database.run(`ALTER TABLE model_usage ADD COLUMN machine_id TEXT DEFAULT 'local'`);
+            }
+            catch (e) {
+                // Column may already exist
+            }
+        }
         setMetadata(database, 'schema_version', SCHEMA_VERSION.toString());
+    }
+    // Ensure machine ID is stored
+    if (!getMetadata(database, 'machine_id')) {
+        const hostname = os.hostname();
+        const random = Math.random().toString(36).substring(2, 8);
+        machineId = `${hostname}-${random}`;
+        setMetadata(database, 'machine_id', machineId);
+    }
+    else {
+        machineId = getMetadata(database, 'machine_id');
     }
 }
 /**
- * Get metadata value
+ * Get metadata value (internal - uses provided database)
  */
 function getMetadata(database, key) {
     const result = database.exec(`SELECT value FROM metadata WHERE key = ?`, [key]);
@@ -177,10 +225,26 @@ function getMetadata(database, key) {
     return null;
 }
 /**
- * Set metadata value
+ * Set metadata value (internal - uses provided database)
  */
 function setMetadata(database, key, value) {
     database.run(`INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)`, [key, value]);
+}
+/**
+ * Get metadata value (public - uses singleton db)
+ */
+function getDbMetadata(key) {
+    if (!db)
+        return null;
+    return getMetadata(db, key);
+}
+/**
+ * Set metadata value (public - uses singleton db)
+ */
+function setDbMetadata(key, value) {
+    if (!db)
+        return;
+    setMetadata(db, key, value);
 }
 /**
  * Save database to disk
@@ -473,8 +537,9 @@ function clearHistoryBeforeDate(beforeDate) {
     }
 }
 // Model pricing helper (duplicated from dataProvider to avoid circular deps)
+// Cache rates: cache_read = input * 0.1 (90% discount), cache_write = input * 1.25 (25% premium)
 const MODEL_PRICING = {
-    opus: { input: 15, output: 75, cacheRead: 1.875, cacheWrite: 18.75 },
+    opus: { input: 15, output: 75, cacheRead: 1.50, cacheWrite: 18.75 },
     sonnet: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
     default: { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 }
 };
@@ -485,5 +550,119 @@ function getPricingForModel(modelName) {
     if (lower.includes('sonnet'))
         return MODEL_PRICING.sonnet;
     return MODEL_PRICING.default;
+}
+/**
+ * Truncate all data (for recalculate/reset)
+ */
+function truncateAllData() {
+    if (!db)
+        return;
+    try {
+        db.run(`DELETE FROM daily_snapshots`);
+        db.run(`DELETE FROM model_usage`);
+        saveDatabase();
+        console.log('Claude Analytics: Database truncated');
+    }
+    catch (error) {
+        console.error('Claude Analytics: Failed to truncate database:', error);
+    }
+}
+/**
+ * Export all data for Gist sync (with machine ID)
+ */
+function exportForGistSync() {
+    const currentMachineId = getMachineId();
+    const snapshots = getAllDailySnapshots().map(s => ({
+        ...s,
+        machine_id: currentMachineId
+    }));
+    const modelUsage = getAllModelUsage().map(m => ({
+        ...m,
+        machine_id: currentMachineId
+    }));
+    return {
+        snapshots,
+        modelUsage,
+        machineId: currentMachineId,
+        metadata: {
+            exportedAt: new Date().toISOString(),
+            version: '2.0'
+        }
+    };
+}
+/**
+ * Import and merge data from Gist (combines data from multiple machines)
+ */
+function importAndMergeFromGist(gistData) {
+    if (!db)
+        return { imported: 0, merged: 0 };
+    const currentMachineId = getMachineId();
+    let imported = 0;
+    let merged = 0;
+    // Get existing dates for this machine
+    const existingDates = getExistingDates();
+    // Process snapshots - add data from other machines
+    for (const snapshot of gistData.snapshots || []) {
+        const remoteMachineId = snapshot.machine_id || gistData.machineId || 'unknown';
+        // Skip if this is our own data (we already have it)
+        if (remoteMachineId === currentMachineId) {
+            continue;
+        }
+        // Check if we have this date already
+        if (existingDates.has(snapshot.date)) {
+            // Merge: update existing record by adding remote values
+            const existing = db.exec(`SELECT cost, messages, tokens, sessions FROM daily_snapshots WHERE date = ?`, [snapshot.date]);
+            if (existing.length > 0 && existing[0].values.length > 0) {
+                const row = existing[0].values[0];
+                const newCost = row[0] + (snapshot.cost || 0);
+                const newMessages = row[1] + (snapshot.messages || 0);
+                const newTokens = row[2] + (snapshot.tokens || 0);
+                const newSessions = row[3] + (snapshot.sessions || 0);
+                db.run(`UPDATE daily_snapshots SET cost = ?, messages = ?, tokens = ?, sessions = ? WHERE date = ?`, [newCost, newMessages, newTokens, newSessions, snapshot.date]);
+                merged++;
+            }
+        }
+        else {
+            // Insert new record
+            saveDailySnapshot({
+                date: snapshot.date,
+                cost: snapshot.cost || 0,
+                messages: snapshot.messages || 0,
+                tokens: snapshot.tokens || 0,
+                sessions: snapshot.sessions || 0
+            });
+            imported++;
+        }
+    }
+    // Process model usage similarly
+    for (const usage of gistData.modelUsage || []) {
+        const remoteMachineId = usage.machine_id || gistData.machineId || 'unknown';
+        if (remoteMachineId === currentMachineId) {
+            continue;
+        }
+        // Check existing
+        const existing = db.exec(`SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM model_usage WHERE date = ? AND model = ?`, [usage.date, usage.model]);
+        if (existing.length > 0 && existing[0].values.length > 0) {
+            // Merge by adding
+            const row = existing[0].values[0];
+            db.run(`UPDATE model_usage SET input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ? WHERE date = ? AND model = ?`, [row[0] + (usage.inputTokens || 0),
+                row[1] + (usage.outputTokens || 0),
+                row[2] + (usage.cacheReadTokens || 0),
+                row[3] + (usage.cacheWriteTokens || 0),
+                usage.date, usage.model]);
+        }
+        else {
+            saveModelUsage({
+                date: usage.date,
+                model: usage.model,
+                inputTokens: usage.inputTokens || 0,
+                outputTokens: usage.outputTokens || 0,
+                cacheReadTokens: usage.cacheReadTokens || 0,
+                cacheWriteTokens: usage.cacheWriteTokens || 0
+            });
+        }
+    }
+    saveDatabase();
+    return { imported, merged };
 }
 //# sourceMappingURL=database.js.map

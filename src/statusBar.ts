@@ -102,6 +102,16 @@ export class StatusBarManager implements vscode.Disposable {
             // Cache-only mode - always instant
             const data = getUsageData();
 
+            // Read visibility settings
+            const config = vscode.workspace.getConfiguration('claudeUsage');
+            const showLifetimeCost = config.get<boolean>('showLifetimeCost', true);
+            const showTodayCost = config.get<boolean>('showTodayCost', true);
+            const showMessages = config.get<boolean>('showMessages', true);
+            const showTokens = config.get<boolean>('showTokens', true);
+            const showPersonality = config.get<boolean>('showPersonality', true);
+            const showActivity = config.get<boolean>('showActivity', true);
+            const showRateLimits = config.get<boolean>('showRateLimits', true);
+
             // Account Total cost - scaled display, full on hover
             const trendArrow = data.funStats.costTrend === 'up' ? '📈' :
                 data.funStats.costTrend === 'down' ? '📉' : '➡️';
@@ -123,6 +133,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `_Click to open Overview_`
             );
             this.lifetimeCost.color = "#2ed573";
+            showLifetimeCost ? this.lifetimeCost.show() : this.lifetimeCost.hide();
 
             // Today's cost - scaled display, full on hover
             const vsYesterdayNum = data.funStats.yesterdayCost > 0
@@ -135,7 +146,6 @@ export class StatusBarManager implements vscode.Disposable {
             const vsAvg = vsAvgNum.toLocaleString('en-US');
 
             // Budget-aware coloring
-            const config = vscode.workspace.getConfiguration('claudeUsage');
             const dailyBudget = config.get<number>('dailyBudget', 0);
             let todayCostColor = "#ffa502"; // Default orange
             let budgetInfo = '';
@@ -154,7 +164,7 @@ export class StatusBarManager implements vscode.Disposable {
             this.todayCost.text = `$(calendar) ${this.formatCostScaled(data.today.cost)}`;
             this.todayCost.tooltip = new vscode.MarkdownString(
                 `**Today's Usage (API Cost)**\n\n` +
-                `💸 Cost: ${this.formatCostFull(data.today.cost)}\n\n` +
+                `💵 Cost: ${this.formatCostFull(data.today.cost)}\n\n` +
                 `🪙 Tokens: ${this.formatNumberFull(data.today.tokens)}\n\n` +
                 `💬 Messages: ${this.formatNumberFull(data.today.messages)}${budgetInfo}\n\n` +
                 `---\n\n` +
@@ -166,6 +176,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `_Click to open Cost_`
             );
             this.todayCost.color = todayCostColor;
+            showTodayCost ? this.todayCost.show() : this.todayCost.hide();
 
             // Messages - scaled display, full on hover (Account Total)
             this.messages.text = `$(comment-discussion) ${this.formatNumberScaled(acct.messages)}`;
@@ -185,6 +196,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `_Click to open Messages_`
             );
             this.messages.color = "#3498db";
+            showMessages ? this.messages.show() : this.messages.hide();
 
             // Tokens - scaled display, full on hover (Account Total)
             this.tokens.text = `$(symbol-number) ${this.formatNumberScaled(acct.tokens)}`;
@@ -196,12 +208,13 @@ export class StatusBarManager implements vscode.Disposable {
                 `---\n\n` +
                 `**Cache Efficiency**\n\n` +
                 `📊 Cache hit ratio: ${data.funStats.cacheHitRatio}%\n\n` +
-                `💸 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
+                `💵 Cache savings: ${this.formatCostFull(data.funStats.cacheSavings)}\n\n` +
                 `🗄️ Cache read: ${this.formatNumberScaled(acct.cacheReadTokens)}\n\n` +
                 `---\n\n` +
                 `_Click to open Messages_`
             );
             this.tokens.color = "#9b59b6";
+            showTokens ? this.tokens.show() : this.tokens.hide();
 
             // Conversation stats for both items
             const cs = data.conversationStats;
@@ -240,6 +253,7 @@ export class StatusBarManager implements vscode.Disposable {
                 `_Click to open Personality_`
             );
             this.personality.color = "#e056fd";
+            showPersonality ? this.personality.show() : this.personality.hide();
 
             // === ACTIVITY ITEM ===
             // Show code blocks count
@@ -282,9 +296,10 @@ export class StatusBarManager implements vscode.Disposable {
                 `_Click to open Personality_`
             );
             this.activity.color = "#00d2d3";
+            showActivity ? this.activity.show() : this.activity.hide();
 
-            // Fetch limits asynchronously
-            this.updateLimits();
+            // Fetch limits asynchronously (respects showRateLimits setting)
+            this.updateLimits(showRateLimits);
 
         } catch (error) {
             this.lifetimeCost.text = "$(graph) Claude";
@@ -297,7 +312,12 @@ export class StatusBarManager implements vscode.Disposable {
         }
     }
 
-    private async updateLimits(): Promise<void> {
+    private async updateLimits(showRateLimits: boolean = true): Promise<void> {
+        if (!showRateLimits) {
+            this.limits.hide();
+            return;
+        }
+
         try {
             const subscription = await getSubscriptionInfo();
 
@@ -305,6 +325,7 @@ export class StatusBarManager implements vscode.Disposable {
                 this.limits.text = "$(pulse) N/A";
                 this.limits.tooltip = "Claude Code credentials not found";
                 this.limits.color = "#888888";
+                this.limits.show();
                 return;
             }
 
@@ -319,11 +340,13 @@ export class StatusBarManager implements vscode.Disposable {
                 `_Click to open Overview_`;
 
             this.limits.tooltip = new vscode.MarkdownString(tooltipText);
+            this.limits.show();
 
         } catch (error) {
             this.limits.text = "$(pulse) --";
             this.limits.tooltip = "Failed to read subscription info";
             this.limits.color = "#888888";
+            this.limits.show();
         }
     }
 

@@ -44,13 +44,21 @@ except ImportError:
 
 # ============================================================================
 # MODEL PRICING (per 1M tokens) - Same as extension
+# Cache rates are calculated dynamically: cache_read = input * 0.1, cache_write = input * 1.25
 # ============================================================================
 MODEL_PRICING = {
-    'opus': {'input': 15, 'output': 75, 'cache_read': 1.875, 'cache_write': 18.75},
-    'sonnet': {'input': 3, 'output': 15, 'cache_read': 0.30, 'cache_write': 3.75},
-    'haiku': {'input': 0.25, 'output': 1.25, 'cache_read': 0.03, 'cache_write': 0.30},
-    'default': {'input': 3, 'output': 15, 'cache_read': 0.30, 'cache_write': 3.75}
+    'opus': {'input': 15, 'output': 75},
+    'sonnet': {'input': 3, 'output': 15},
+    'haiku': {'input': 0.25, 'output': 1.25},
+    'default': {'input': 3, 'output': 15}
 }
+
+def get_cache_rates(pricing: dict) -> tuple:
+    """Calculate cache rates dynamically to match JS logic.
+    cache_read = 90% discount (input * 0.1)
+    cache_write = 25% premium (input * 1.25)
+    """
+    return (pricing['input'] * 0.1, pricing['input'] * 1.25)
 
 # Token estimation: ~4 characters per token (conservative)
 CHARS_PER_TOKEN = 4
@@ -63,8 +71,29 @@ CURSE_WORDS = {'damn', 'hell', 'crap', 'shit', 'fuck', 'ass', 'bastard', 'bitch'
 POLITE_WORDS = {'please', 'thank', 'thanks', 'appreciate', 'grateful', 'kindly'}
 FRUSTRATION_WORDS = {'frustrated', 'annoying', 'broken', 'stupid', 'hate', 'ugh', 'argh', 'wtf'}
 
-# Regex for markdown code blocks: ```language\ncode\n```
-CODE_BLOCK_PATTERN = re.compile(r'```(\w*)\n(.*?)```', re.DOTALL)
+# Request type patterns
+REQUEST_PATTERNS = {
+    'debugging': re.compile(r'\b(debug|error|bug|fix|issue|problem|broken|crash|fail|exception|traceback|stack\s*trace)\b', re.I),
+    'features': re.compile(r'\b(add|create|implement|build|new\s+feature|feature|functionality|capability)\b', re.I),
+    'explain': re.compile(r'\b(explain|how\s+does|what\s+is|what\s+does|why\s+does|understand|clarify|describe)\b', re.I),
+    'refactor': re.compile(r'\b(refactor|clean\s*up|reorganize|restructure|improve|optimize|simplify)\b', re.I),
+    'review': re.compile(r'\b(review|check|look\s+at|examine|audit|inspect|feedback)\b', re.I),
+    'testing': re.compile(r'\b(test|testing|unit\s*test|spec|coverage|assert|mock|pytest|jest)\b', re.I)
+}
+
+# Sentiment patterns
+SENTIMENT_PATTERNS = {
+    'positive': re.compile(r'\b(great|awesome|perfect|excellent|amazing|wonderful|thanks|love|nice|good\s+job|well\s+done|fantastic)\b', re.I),
+    'negative': re.compile(r'\b(terrible|awful|horrible|sucks|hate|worst|bad|annoying|frustrat|stupid|broken|useless)\b', re.I),
+    'urgent': re.compile(r'\b(urgent|asap|immediately|critical|emergency|deadline|rush|hurry|quick|now)\b', re.I),
+    'confused': re.compile(r'\b(confused|confusing|don\'?t\s+understand|lost|unclear|what\?|huh|makes?\s+no\s+sense)\b', re.I)
+}
+
+# Celebration patterns
+CELEBRATION_PATTERN = re.compile(r'\b(yay|woohoo|awesome|finally|it\s+works|success|nailed\s+it|got\s+it|yes!|woo)\b', re.I)
+
+# Regex for markdown code blocks: ```language\ncode\n``` (handles Windows \r\n)
+CODE_BLOCK_PATTERN = re.compile(r'```(\w*)\r?\n(.*?)```', re.DOTALL)
 
 
 def get_model_pricing(model_name: str) -> dict:
@@ -108,13 +137,15 @@ def count_code_blocks(text: str) -> dict:
 
 
 def parse_timestamp(ts: str) -> datetime:
-    """Parse ISO timestamp to datetime."""
+    """Parse ISO timestamp to datetime, converting to local timezone."""
     if not ts:
         return None
     try:
         # Handle various timestamp formats
         ts = ts.replace('Z', '+00:00')
-        return datetime.fromisoformat(ts)
+        dt = datetime.fromisoformat(ts)
+        # Convert to local timezone
+        return dt.astimezone()
     except:
         return None
 
@@ -124,7 +155,12 @@ def analyze_text_personality(text: str) -> dict:
     text_lower = text.lower()
     words = re.findall(r'\b\w+\b', text_lower)
 
-    return {
+    # Calculate CAPS RAGE properly - only count alphabetic characters
+    alpha_chars = sum(1 for c in text if c.isalpha())
+    upper_chars = sum(1 for c in text if c.isupper())
+    caps_rage = 1 if alpha_chars > 5 and upper_chars / alpha_chars > 0.5 else 0
+
+    result = {
         'curse_words': sum(1 for w in words if w in CURSE_WORDS),
         'polite_words': sum(1 for w in words if w in POLITE_WORDS),
         'frustration_words': sum(1 for w in words if w in FRUSTRATION_WORDS),
@@ -132,10 +168,25 @@ def analyze_text_personality(text: str) -> dict:
         'exclamations': text.count('!'),
         'please_count': text_lower.count('please'),
         'thanks_count': text_lower.count('thank'),
-        'caps_rage': 1 if sum(1 for c in text if c.isupper()) / max(len(text), 1) > 0.5 else 0,
+        'caps_rage': caps_rage,
         'lol_count': len(re.findall(r'\blol\b', text_lower)),
-        'word_count': len(words)
+        'word_count': len(words),
+        # Request types
+        'request_debugging': len(REQUEST_PATTERNS['debugging'].findall(text)),
+        'request_features': len(REQUEST_PATTERNS['features'].findall(text)),
+        'request_explain': len(REQUEST_PATTERNS['explain'].findall(text)),
+        'request_refactor': len(REQUEST_PATTERNS['refactor'].findall(text)),
+        'request_review': len(REQUEST_PATTERNS['review'].findall(text)),
+        'request_testing': len(REQUEST_PATTERNS['testing'].findall(text)),
+        # Sentiment
+        'sentiment_positive': len(SENTIMENT_PATTERNS['positive'].findall(text)),
+        'sentiment_negative': len(SENTIMENT_PATTERNS['negative'].findall(text)),
+        'sentiment_urgent': len(SENTIMENT_PATTERNS['urgent'].findall(text)),
+        'sentiment_confused': len(SENTIMENT_PATTERNS['confused'].findall(text)),
+        # Celebrations
+        'celebrations': len(CELEBRATION_PATTERN.findall(text))
     }
+    return result
 
 
 def process_conversations(data_dir: Path) -> dict:
@@ -173,6 +224,20 @@ def process_conversations(data_dir: Path) -> dict:
         'caps_rage': 0,
         'lol_count': 0,
         'word_count': 0,
+        # Request types
+        'request_debugging': 0,
+        'request_features': 0,
+        'request_explain': 0,
+        'request_refactor': 0,
+        'request_review': 0,
+        'request_testing': 0,
+        # Sentiment
+        'sentiment_positive': 0,
+        'sentiment_negative': 0,
+        'sentiment_urgent': 0,
+        'sentiment_confused': 0,
+        # Celebrations
+        'celebrations': 0,
         # Code stats
         'code_blocks': 0,
         'lines_of_code': 0,
@@ -189,7 +254,11 @@ def process_conversations(data_dir: Path) -> dict:
         if not created:
             continue
 
-        date = created[:10]  # YYYY-MM-DD
+        # Convert UTC timestamp to local date
+        created_dt = parse_timestamp(created)
+        if not created_dt:
+            continue
+        date = created_dt.strftime('%Y-%m-%d')  # Local date
         daily_stats[date]['sessions'] += 1
 
         messages = conv.get('chat_messages', [])
@@ -287,24 +356,31 @@ def process_conversations(data_dir: Path) -> dict:
 
 
 def calculate_costs(daily_stats: dict) -> dict:
-    """Calculate estimated costs based on token usage."""
-    # Use Sonnet pricing as default (most common model)
+    """Calculate estimated costs based on token usage.
+    Uses same cost formula as JS backfill for consistency:
+    - cache_read rate = input * 0.1 (90% discount)
+    - cache_write rate = input * 1.25 (25% premium)
+    """
+    # Use Sonnet pricing as default (most common model for Claude.ai web)
     pricing = MODEL_PRICING['sonnet']
+    cache_read_rate, cache_write_rate = get_cache_rates(pricing)
 
     for date, stats in daily_stats.items():
         input_tokens = stats['input_tokens']
         output_tokens = stats['output_tokens']
 
         # Estimate cache distribution: 60% cache read, 10% cache write
+        # (Web conversations tend to have high cache reuse in extended chats)
         cache_read_tokens = int(input_tokens * 0.6)
         cache_write_tokens = int(input_tokens * 0.1)
         regular_input_tokens = input_tokens - cache_read_tokens - cache_write_tokens
 
+        # Calculate cost using same formula as JS backfill
         cost = (
             (regular_input_tokens / 1_000_000) * pricing['input'] +
             (output_tokens / 1_000_000) * pricing['output'] +
-            (cache_read_tokens / 1_000_000) * pricing['cache_read'] +
-            (cache_write_tokens / 1_000_000) * pricing['cache_write']
+            (cache_read_tokens / 1_000_000) * cache_read_rate +
+            (cache_write_tokens / 1_000_000) * cache_write_rate
         )
 
         stats['cost'] = round(cost, 4)
@@ -319,8 +395,29 @@ def get_db_path() -> Path:
     return Path.home() / '.claude' / 'analytics.db'
 
 
+def get_earliest_db_date(db_path: Path) -> str:
+    """Get the earliest date in the database, or None if empty."""
+    if not db_path.exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(db_path, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute('SELECT MIN(date) FROM daily_snapshots')
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result and result[0] else None
+    except:
+        return None
+
+
 def write_to_sqlite(daily_stats: dict, db_path: Path) -> int:
-    """Write daily stats to the SQLite database."""
+    """Write daily stats to the SQLite database.
+
+    Only imports dates BEFORE the earliest existing date in the DB.
+    This allows Recalculate Historical Costs to handle Claude Code JSONL data
+    while this script fills in older Claude.ai web data.
+    """
     if not HAS_SQLITE:
         print("ERROR: sqlite3 module not available")
         return 0
@@ -332,7 +429,7 @@ def write_to_sqlite(daily_stats: dict, db_path: Path) -> int:
         shutil.copy(db_path, backup_path)
         print(f"Created backup at {backup_path}")
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=10)
     cursor = conn.cursor()
 
     # Create tables if they don't exist
@@ -359,16 +456,34 @@ def write_to_sqlite(daily_stats: dict, db_path: Path) -> int:
         )
     ''')
 
+    # Get earliest existing date - only import dates BEFORE this
+    cursor.execute('SELECT MIN(date) FROM daily_snapshots')
+    result = cursor.fetchone()
+    earliest_date = result[0] if result and result[0] else None
+
+    if earliest_date:
+        print(f"\nEarliest existing date in DB: {earliest_date}")
+        print(f"Only importing Claude.ai data from BEFORE this date...")
+    else:
+        print(f"\nDatabase is empty - importing all Claude.ai data...")
+
+    imported = 0
+    skipped_after = 0
+    skipped_exists = 0
+
     # Check existing dates
     cursor.execute('SELECT date FROM daily_snapshots')
     existing_dates = {row[0] for row in cursor.fetchall()}
 
-    imported = 0
-    skipped = 0
-
     for date, stats in sorted(daily_stats.items()):
+        # Skip if date already exists
         if date in existing_dates:
-            skipped += 1
+            skipped_exists += 1
+            continue
+
+        # Skip if date is >= earliest existing date (let Recalculate handle those)
+        if earliest_date and date >= earliest_date:
+            skipped_after += 1
             continue
 
         total_tokens = stats['input_tokens'] + stats['output_tokens']
@@ -391,7 +506,7 @@ def write_to_sqlite(daily_stats: dict, db_path: Path) -> int:
     conn.commit()
     conn.close()
 
-    return imported, skipped
+    return imported, skipped_exists, skipped_after
 
 
 def export_json_summary(daily_stats: dict, output_path: Path):
@@ -418,6 +533,20 @@ def export_json_summary(daily_stats: dict, output_path: Path):
         'total_caps_rage': 0,
         'total_lol_count': 0,
         'total_word_count': 0,
+        # Request types
+        'total_request_debugging': 0,
+        'total_request_features': 0,
+        'total_request_explain': 0,
+        'total_request_refactor': 0,
+        'total_request_review': 0,
+        'total_request_testing': 0,
+        # Sentiment
+        'total_sentiment_positive': 0,
+        'total_sentiment_negative': 0,
+        'total_sentiment_urgent': 0,
+        'total_sentiment_confused': 0,
+        # Celebrations
+        'total_celebrations': 0,
         # Code stats
         'total_code_blocks': 0,
         'total_lines_of_code': 0,
@@ -446,6 +575,23 @@ def export_json_summary(daily_stats: dict, output_path: Path):
         totals['total_caps_rage'] += stats['caps_rage']
         totals['total_lol_count'] += stats['lol_count']
         totals['total_word_count'] += stats['word_count']
+
+        # Request types
+        totals['total_request_debugging'] += stats.get('request_debugging', 0)
+        totals['total_request_features'] += stats.get('request_features', 0)
+        totals['total_request_explain'] += stats.get('request_explain', 0)
+        totals['total_request_refactor'] += stats.get('request_refactor', 0)
+        totals['total_request_review'] += stats.get('request_review', 0)
+        totals['total_request_testing'] += stats.get('request_testing', 0)
+
+        # Sentiment
+        totals['total_sentiment_positive'] += stats.get('sentiment_positive', 0)
+        totals['total_sentiment_negative'] += stats.get('sentiment_negative', 0)
+        totals['total_sentiment_urgent'] += stats.get('sentiment_urgent', 0)
+        totals['total_sentiment_confused'] += stats.get('sentiment_confused', 0)
+
+        # Celebrations
+        totals['total_celebrations'] += stats.get('celebrations', 0)
 
         # Hourly activity
         for hour, count in stats['hours'].items():
@@ -535,14 +681,23 @@ def update_conversation_stats_cache(totals: dict):
         'linesOfCode': totals['total_lines_of_code'],
         'topLanguages': dict(totals.get('languages', {})),
         'requestTypes': {
-            'debugging': 0, 'features': 0, 'explain': 0,
-            'refactor': 0, 'review': 0, 'testing': 0
+            'debugging': totals.get('total_request_debugging', 0),
+            'features': totals.get('total_request_features', 0),
+            'explain': totals.get('total_request_explain', 0),
+            'refactor': totals.get('total_request_refactor', 0),
+            'review': totals.get('total_request_review', 0),
+            'testing': totals.get('total_request_testing', 0)
         },
-        'sentiment': {'positive': 0, 'negative': 0, 'urgent': 0, 'confused': 0},
+        'sentiment': {
+            'positive': totals.get('total_sentiment_positive', 0),
+            'negative': totals.get('total_sentiment_negative', 0),
+            'urgent': totals.get('total_sentiment_urgent', 0),
+            'confused': totals.get('total_sentiment_confused', 0)
+        },
         'pleaseCount': totals['total_please_count'],
         'lolCount': totals['total_lol_count'],
-        'facepalms': 0,
-        'celebrationMoments': 0
+        'facepalms': 0,  # Not tracked
+        'celebrationMoments': totals.get('total_celebrations', 0)
     }
 
     # Merge with existing cache if present
@@ -554,13 +709,14 @@ def update_conversation_stats_cache(totals: dict):
         except:
             pass
 
-    # Merge stats - add to existing rather than replace
+    # Merge stats - add backfill to existing (historical + current)
+    # Note: Only run backfill once per export to avoid double-counting
     if 'stats' in existing:
         for key in ['curseWords', 'totalWords', 'questionsAsked', 'exclamations',
                     'thanksCount', 'capsLockMessages', 'codeBlocks', 'linesOfCode',
                     'pleaseCount', 'lolCount']:
             if key in existing['stats']:
-                stats[key] = max(stats[key], existing['stats'][key])
+                stats[key] = stats[key] + existing['stats'].get(key, 0)
         # Merge topLanguages
         if 'topLanguages' in existing['stats']:
             for lang, lines in existing['stats']['topLanguages'].items():
@@ -569,7 +725,10 @@ def update_conversation_stats_cache(totals: dict):
     output = {
         'lastUpdated': datetime.now().isoformat(),
         'source': 'backfill_claude_export.py',
-        'stats': stats
+        'stats': stats,
+        'hourCounts': {str(k): v for k, v in totals.get('hourly_activity', {}).items()},
+        'nightOwlScore': totals.get('night_owl_score', 0),
+        'earlyBirdScore': totals.get('early_bird_score', 0)
     }
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -643,6 +802,7 @@ Examples:
     parser.add_argument('--json-only', action='store_true', help='Only export JSON summary, do not modify database')
     parser.add_argument('--output', '-o', type=str, help='Output JSON file path (default: backfill_summary.json)')
     parser.add_argument('--db', type=str, help='Custom database path (default: ~/.claude/analytics.db)')
+    parser.add_argument('--skip-prompt', '-y', action='store_true', help='Skip the prompt and run immediately')
 
     args = parser.parse_args()
 
@@ -654,6 +814,33 @@ Examples:
     print(f"\nClaude Data Export Backfill Tool")
     print("=" * 40)
     print(f"Data directory: {data_dir}")
+
+    # Show prompt about running Recalculate Historical Costs first
+    if not args.json_only and not args.skip_prompt:
+        db_path = Path(args.db) if args.db else get_db_path()
+        earliest_date = get_earliest_db_date(db_path)
+
+        print("\n" + "-" * 60)
+        print("IMPORTANT: Recommended workflow for best results:")
+        print("-" * 60)
+        print("1. Run 'Recalculate Historical Costs' in VSCode extension FIRST")
+        print("   (This processes Claude Code JSONL files for accurate data)")
+        print("2. Then run this script to backfill older Claude.ai web data")
+        print("-" * 60)
+
+        if earliest_date:
+            print(f"\nCurrent earliest date in DB: {earliest_date}")
+            print(f"This script will only import dates BEFORE {earliest_date}")
+        else:
+            print("\nDatabase is empty - all dates will be imported.")
+            print("Consider running 'Recalculate Historical Costs' first if you")
+            print("have Claude Code JSONL files for more accurate recent data.")
+
+        print()
+        response = input("Continue with backfill? [y/N]: ").strip().lower()
+        if response not in ('y', 'yes'):
+            print("Aborted. Run 'Recalculate Historical Costs' first, then try again.")
+            sys.exit(0)
 
     # Process conversations
     daily_stats = process_conversations(data_dir)
@@ -672,10 +859,14 @@ Examples:
         print(f"\nDatabase path: {db_path}")
 
         if db_path.exists():
-            imported, skipped = write_to_sqlite(daily_stats, db_path)
+            imported, skipped_exists, skipped_after = write_to_sqlite(daily_stats, db_path)
             print(f"\nDatabase updated:")
-            print(f"  Imported: {imported} days")
-            print(f"  Skipped (already exist): {skipped} days")
+            print(f"  Imported: {imported} days (dates before existing data)")
+            if skipped_exists > 0:
+                print(f"  Skipped (already exist): {skipped_exists} days")
+            if skipped_after > 0:
+                print(f"  Skipped (>= earliest date): {skipped_after} days")
+                print(f"  (Use 'Recalculate Historical Costs' for recent Claude Code data)")
         else:
             print(f"\nWARNING: Database not found at {db_path}")
             print("The extension creates the database on first run.")

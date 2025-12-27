@@ -8,7 +8,7 @@
 
 ---
 
-> **Inspired by [Claude Goblin](https://github.com/data-goblin/claude-goblin)** by [Kurt Buhler](https://github.com/data-goblin) - A brilliant tool for analyzing Claude usage data. Kurt's innovative approach to persisting usage history beyond Claude Code's rolling 30-day window directly inspired the SQLite persistence feature in this extension. Check out his work!
+> **Inspired by [Claude Goblin](https://github.com/data-goblin/claude-goblin)** by [Kurt Buhler](https://github.com/data-goblin) - A brilliant tool for analyzing Claude usage data. Kurt's innovative approach to persisting usage history beyond Claude Code's rolling 30-day window inspired this entire extension. Check out his work!
 
 ---
 
@@ -188,6 +188,49 @@ See [BACKFILL_GUIDE.md](BACKFILL_GUIDE.md) for detailed instructions.
 
 ---
 
+## GitHub Gist Backup
+
+Sync your analytics data across multiple machines using GitHub Gist.
+
+### Setup
+
+1. **Create a GitHub Personal Access Token:**
+   - Go to GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)
+   - Click "Generate new token (classic)"
+   - Give it a descriptive name like "Claude Analytics Backup"
+   - Select the `gist` scope (allows creating and updating Gists)
+   - Click "Generate token" and copy it immediately
+
+2. **Configure the Extension:**
+   - Open VS Code Settings (`Ctrl+,` or `Cmd+,`)
+   - Search for "Claude Usage Gist"
+   - Enable `Gist Sync: Enabled`
+   - Paste your token in `Gist Sync: Token`
+   - (Optional) Set a specific Gist ID if syncing to an existing Gist
+
+3. **Sync Options:**
+   - **Auto-sync**: Enabled by default when Gist sync is enabled - automatically syncs on each data update
+   - **Manual sync**: Run "Claude Analytics: Sync to Gist" command from Command Palette
+   - **Import**: Run "Claude Analytics: Import from Gist" to restore data from a backup
+
+### Multi-Machine Setup
+
+1. Set up Gist sync on your primary machine (this creates the Gist automatically)
+2. Open VS Code Settings and copy the `Gist Sync: Gist Id` value
+3. On secondary machines:
+   - Configure with the same token
+   - Paste the Gist ID
+   - Run "Claude Analytics: Import from Gist" to sync historical data
+
+### Security Notes
+
+- Your token is stored in VS Code user settings (not workspace settings)
+- Gists are created as **private** by default
+- The database contains only usage statistics - no conversation content
+- Never share your Personal Access Token
+
+---
+
 ## Installation
 
 ### Option 1: From VS Code Marketplace (Recommended)
@@ -263,11 +306,18 @@ Access via `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac):
 | Command | Description |
 |---------|-------------|
 | `Refresh Claude Usage` | Force refresh all statistics |
+| `Scan Live Today Stats` | Scan JSONL files for real-time today's usage |
 | `Show Claude Analytics Panel` | Open the dashboard |
 | `Show Claude Analytics - Overview` | Jump to Overview tab |
 | `Show Claude Analytics - Cost` | Jump to Cost tab |
 | `Show Claude Analytics - Messages` | Jump to Messages tab |
 | `Show Claude Analytics - Personality` | Jump to Personality tab |
+| `Export Claude Usage Data` | Export usage data to JSON or CSV |
+| `Claude Analytics: Clear History Before Date` | Delete historical data before a cutoff date |
+| `Claude Analytics: Recalculate Historical Costs` | Rescan all JSONL files and rebuild database |
+| `Claude Analytics: Sync to Gist` | Backup database to GitHub Gist |
+| `Claude Analytics: Import from Gist` | Restore database from GitHub Gist |
+| `Claude Analytics: Configure Gist Sync` | Open Gist sync settings |
 
 ---
 
@@ -400,7 +450,7 @@ npx vsce package   # Create .vsix package
 - **Local history stats**: "Local History" totals now include full data from your local SQLite database, not just the last 30 days
 - **7 new achievements**: Token Titan (1M+ tokens), $100 Club, $500 Spender, $1K Whale, Refactor Pro, Refactor King, Weekend Warrior
 - **Export to CSV/JSON**: Export your usage data via dashboard button or view title menu
-- **Budget tracking**: New `dailyBudget` and `weeklyBudget` settings with status bar color coding (green/yellow/red)
+- **Budget tracking**: New `dailyBudget` setting with status bar color coding (green/yellow/red)
 - **Cost alerts**: New `costAlertThreshold` setting triggers VS Code notifications when daily cost exceeds threshold
 - **Date range filter**: Filter dashboard stats by Last 7 days, Last 30 days, This Month, or All Time
 - **Session breakdown**: New section in Messages tab showing recent sessions with project, messages, tokens, and cost
@@ -427,9 +477,11 @@ npx vsce package   # Create .vsix package
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License with Commons Clause — see [LICENSE](LICENSE) for details.
 
-Copyright (c) 2024-2025 Analytic Endeavors
+Free to use, modify, and distribute. Commercial sale or resale prohibited.
+
+Copyright (c) 2024-2025 Reid Havens / Analytic Endeavors
 
 ---
 

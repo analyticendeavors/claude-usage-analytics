@@ -99,6 +99,15 @@ class StatusBarManager {
         try {
             // Cache-only mode - always instant
             const data = (0, dataProvider_1.getUsageData)();
+            // Read visibility settings
+            const config = vscode.workspace.getConfiguration('claudeUsage');
+            const showLifetimeCost = config.get('showLifetimeCost', true);
+            const showTodayCost = config.get('showTodayCost', true);
+            const showMessages = config.get('showMessages', true);
+            const showTokens = config.get('showTokens', true);
+            const showPersonality = config.get('showPersonality', true);
+            const showActivity = config.get('showActivity', true);
+            const showRateLimits = config.get('showRateLimits', true);
             // Account Total cost - scaled display, full on hover
             const trendArrow = data.funStats.costTrend === 'up' ? '📈' :
                 data.funStats.costTrend === 'down' ? '📉' : '➡️';
@@ -107,7 +116,7 @@ class StatusBarManager {
             this.lifetimeCost.text = `$(graph) ${this.formatCostScaled(acct.cost)}`;
             this.lifetimeCost.tooltip = new vscode.MarkdownString(`**Account Total (Lifetime)**\n\n` +
                 `💰 Total: ${this.formatCostFull(acct.cost)}\n\n` +
-                `🔢 Tokens: ${this.formatNumberFull(acct.tokens)}\n\n` +
+                `🪙 Tokens: ${this.formatNumberFull(acct.tokens)}\n\n` +
                 `💬 Messages: ${this.formatNumberFull(acct.messages)}\n\n` +
                 `📊 Sessions: ${this.formatNumberFull(acct.sessions)}\n\n` +
                 `---\n\n` +
@@ -118,6 +127,7 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Overview_`);
             this.lifetimeCost.color = "#2ed573";
+            showLifetimeCost ? this.lifetimeCost.show() : this.lifetimeCost.hide();
             // Today's cost - scaled display, full on hover
             const vsYesterdayNum = data.funStats.yesterdayCost > 0
                 ? Math.round((data.today.cost - data.funStats.yesterdayCost) / data.funStats.yesterdayCost * 100)
@@ -128,7 +138,6 @@ class StatusBarManager {
                 : 0;
             const vsAvg = vsAvgNum.toLocaleString('en-US');
             // Budget-aware coloring
-            const config = vscode.workspace.getConfiguration('claudeUsage');
             const dailyBudget = config.get('dailyBudget', 0);
             let todayCostColor = "#ffa502"; // Default orange
             let budgetInfo = '';
@@ -148,7 +157,7 @@ class StatusBarManager {
             this.todayCost.text = `$(calendar) ${this.formatCostScaled(data.today.cost)}`;
             this.todayCost.tooltip = new vscode.MarkdownString(`**Today's Usage (API Cost)**\n\n` +
                 `💵 Cost: ${this.formatCostFull(data.today.cost)}\n\n` +
-                `🔢 Tokens: ${this.formatNumberFull(data.today.tokens)}\n\n` +
+                `🪙 Tokens: ${this.formatNumberFull(data.today.tokens)}\n\n` +
                 `💬 Messages: ${this.formatNumberFull(data.today.messages)}${budgetInfo}\n\n` +
                 `---\n\n` +
                 `**Comparisons**\n\n` +
@@ -158,6 +167,7 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Cost_`);
             this.todayCost.color = todayCostColor;
+            showTodayCost ? this.todayCost.show() : this.todayCost.hide();
             // Messages - scaled display, full on hover (Account Total)
             this.messages.text = `$(comment-discussion) ${this.formatNumberScaled(acct.messages)}`;
             this.messages.tooltip = new vscode.MarkdownString(`**Account Total Messages**\n\n` +
@@ -174,10 +184,11 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Messages_`);
             this.messages.color = "#3498db";
+            showMessages ? this.messages.show() : this.messages.hide();
             // Tokens - scaled display, full on hover (Account Total)
             this.tokens.text = `$(symbol-number) ${this.formatNumberScaled(acct.tokens)}`;
             this.tokens.tooltip = new vscode.MarkdownString(`**Account Total Tokens**\n\n` +
-                `🔢 Total: ${this.formatNumberFull(acct.tokens)} tokens\n\n` +
+                `🪙 Total: ${this.formatNumberFull(acct.tokens)} tokens\n\n` +
                 `📥 Input: ${this.formatNumberScaled(acct.inputTokens)}\n\n` +
                 `📤 Output: ${this.formatNumberScaled(acct.outputTokens)}\n\n` +
                 `---\n\n` +
@@ -188,6 +199,7 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Messages_`);
             this.tokens.color = "#9b59b6";
+            showTokens ? this.tokens.show() : this.tokens.hide();
             // Conversation stats for both items
             const cs = data.conversationStats;
             const reqTypes = cs.requestTypes;
@@ -220,6 +232,7 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Personality_`);
             this.personality.color = "#e056fd";
+            showPersonality ? this.personality.show() : this.personality.hide();
             // === ACTIVITY ITEM ===
             // Show code blocks count
             this.activity.text = `📊 ${this.formatNumberScaled(cs.codeBlocks)}`;
@@ -255,8 +268,9 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Personality_`);
             this.activity.color = "#00d2d3";
-            // Fetch limits asynchronously
-            this.updateLimits();
+            showActivity ? this.activity.show() : this.activity.hide();
+            // Fetch limits asynchronously (respects showRateLimits setting)
+            this.updateLimits(showRateLimits);
         }
         catch (error) {
             this.lifetimeCost.text = "$(graph) Claude";
@@ -268,13 +282,18 @@ class StatusBarManager {
             this.limits.text = "";
         }
     }
-    async updateLimits() {
+    async updateLimits(showRateLimits = true) {
+        if (!showRateLimits) {
+            this.limits.hide();
+            return;
+        }
         try {
             const subscription = await (0, limitsProvider_1.getSubscriptionInfo)();
             if (subscription.error) {
                 this.limits.text = "$(pulse) N/A";
                 this.limits.tooltip = "Claude Code credentials not found";
                 this.limits.color = "#888888";
+                this.limits.show();
                 return;
             }
             // Show tier info
@@ -286,11 +305,13 @@ class StatusBarManager {
                 `---\n\n` +
                 `_Click to open Overview_`;
             this.limits.tooltip = new vscode.MarkdownString(tooltipText);
+            this.limits.show();
         }
         catch (error) {
             this.limits.text = "$(pulse) --";
             this.limits.tooltip = "Failed to read subscription info";
             this.limits.color = "#888888";
+            this.limits.show();
         }
     }
     dispose() {
