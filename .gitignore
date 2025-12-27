@@ -1,10 +1,19 @@
+# Source code (private - install from VS Code Marketplace)
+src/
+out/
+tools/
+*.ts
+*.py
+*.bat
+package.json
+tsconfig.json
+.vscodeignore
+BACKFILL_GUIDE.md
+
 # Dependencies
 node_modules/
 
-# Build output (compiled JS - users should install from VS Code Marketplace)
-out/
-
-# Package files (install from VS Code Marketplace only)
+# Package files
 *.vsix
 
 # Editor settings
@@ -14,7 +23,7 @@ out/
 .DS_Store
 Thumbs.db
 
-# Lock files (regenerate with npm install)
+# Lock files
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
