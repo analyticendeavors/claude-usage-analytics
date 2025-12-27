@@ -2,10 +2,11 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
-## [1.1.0] - 2025-12-22
+## [1.1.0] - 2025-12-27
 
 ### Added
 - **SQLite persistence** - Usage history now preserved forever in a local SQLite database, surviving Claude Code's 30-day rolling window
+- **Configurable refresh interval** - New `refreshIntervalMinutes` setting (1-60 min, default 15) to control auto-refresh frequency
 - **Historical data import** - On first install, automatically imports existing data from stats-cache.json
 - **Local history stats** - "Local History" totals now include full data from your local SQLite database, not just the last 30 days
 - **7 new achievements** - Token Titan (1M+ tokens), $100 Club, $500 Spender, $1K Whale, Refactor Pro, Refactor King, Weekend Warrior
@@ -18,6 +19,8 @@ All notable changes to the Claude Usage Analytics extension will be documented i
 - **Theme-aware colors** - All UI elements now adapt to light and dark VS Code themes
 - **Backfill script** - Python script to import full Claude.ai conversation history from data export
 - **Personality analytics** - Request types, sentiment tracking, and celebration moments
+- **GitHub Gist sync** - Backup your analytics database to a private Gist for multi-machine sync
+- **Status bar visibility settings** - 7 new settings to show/hide individual status bar items (lifetime cost, today cost, messages, tokens, personality, activity, rate limits)
 
 ### Changed
 - Chart toggle buttons now use emojis (messages, cost, tokens)
