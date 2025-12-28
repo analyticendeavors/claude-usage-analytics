@@ -2,6 +2,19 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.2] - 2025-12-28
+
+### Added
+- **Open Settings command** - New "Claude Analytics: Open Settings" command for quick access to extension settings
+- **Live config updates** - Changing refresh interval in settings now takes effect immediately without requiring a reload
+- **Disable auto-refresh option** - Set refresh interval to 0 to disable auto-refresh entirely
+
+### Fixed
+- **Auto-refresh now scans live stats** - The auto-refresh interval now properly re-scans JSONL files for today's usage, fixing an issue where today's numbers stayed stale until manual refresh
+
+### Changed
+- **Refresh interval now in seconds** - Replaced `refreshIntervalMinutes` setting with `refreshIntervalSeconds` for finer control (0=disabled, 10-3600 seconds, default 900 = 15 minutes)
+
 ## [1.1.0] - 2025-12-27
 
 ### Added
