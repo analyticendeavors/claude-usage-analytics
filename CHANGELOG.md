@@ -2,6 +2,11 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.3] - 2025-12-29
+
+### Fixed
+- **Yesterday cost showing N/A** - Fixed issue where "Yesterday" cost would incorrectly show N/A even when data existed. Added fallback logic to ensure yesterday's cost is calculated from SQLite or estimated from token data when the primary calculation returns zero.
+
 ## [1.1.2] - 2025-12-28
 
 ### Added
