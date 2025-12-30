@@ -2,6 +2,11 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.4] - 2025-12-29
+
+### Improved
+- **Enhanced Account Total tooltip** - Status bar tooltip now shows both API Total (from stats-cache.json) and Calculated Total (from SQLite + JSONL history), giving visibility into both data sources similar to the main dashboard view
+
 ## [1.1.3] - 2025-12-29
 
 ### Fixed
