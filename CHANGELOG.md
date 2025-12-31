@@ -2,6 +2,21 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.5] - 2025-12-30
+
+### Added
+- **Context Overhead section** - Tokens tooltip now shows MCP servers, skills count, and tool calls under "Context Overhead" (below Cache Efficiency)
+- **3 new visibility settings** - Toggle MCP status, tool calls, and skills count display independently
+
+### Improved
+- **Instant settings update** - Toggling any visibility setting now immediately refreshes the status bar (no reload required)
+- **Top Language display** - Now shows comma-formatted count with label (e.g., "python - 42,600 blocks")
+
+### Fixed
+- **Realistic politeness thresholds** - Adjusted scoring for coding context (5%+ = Polite, 2%+ = Friendly, 1%+ = Neutral, <1% = All Business)
+- **Clearer politeness display** - Tooltip now shows descriptive label with percentage (e.g., "Friendly (1.7%)")
+- **Backfill script link** - Updated to new GitHub repository URL (analyticendeavors/claude-usage-analytics)
+
 ## [1.1.4] - 2025-12-29
 
 ### Improved
