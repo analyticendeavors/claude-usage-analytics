@@ -1,6 +1,6 @@
 # Claude Usage Analytics
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.5-blue)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.95%2B-007ACC)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
