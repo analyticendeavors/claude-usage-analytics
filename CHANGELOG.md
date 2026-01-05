@@ -2,6 +2,11 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.6] - 2025-01-05
+
+### Fixed
+- **"Spawn node ENOENT" error on install** - Fixed error that occurred when users didn't have Node.js in their system PATH. Extension now uses VSCode's bundled Node.js runtime (`process.execPath`) instead of relying on a global `node` command.
+
 ## [1.1.5] - 2025-12-30
 
 ### Added
