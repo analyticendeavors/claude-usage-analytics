@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npm run compile:*)",
-      "Bash(npx vsce package)"
+      "Bash(npx vsce package)",
+      "Bash(code --install-extension:*)",
+      "Bash(powershell.exe -Command \"code --install-extension ''c:\\\\Users\\\\haven\\\\OneDrive - Havens Consulting Inc\\\\Documents\\\\GitHub\\\\claude-usage-analytics\\\\claude-usage-analytics-1.1.7.vsix'' --force\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\haven\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\bin\\\\code.cmd'' --install-extension ''c:\\\\Users\\\\haven\\\\OneDrive - Havens Consulting Inc\\\\Documents\\\\GitHub\\\\claude-usage-analytics\\\\claude-usage-analytics-1.1.7.vsix'' --force\")"
     ]
   }
 }

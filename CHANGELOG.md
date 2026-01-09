@@ -2,6 +2,11 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.7] - 2025-01-09
+
+### Changed
+- **Footer link updated** - Replaced YouTube link with Donate link (Buy Me a Coffee) in dashboard footer
+
 ## [1.1.6] - 2025-01-05
 
 ### Fixed
