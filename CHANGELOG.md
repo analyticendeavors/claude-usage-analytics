@@ -2,6 +2,11 @@
 
 All notable changes to the Claude Usage Analytics extension will be documented in this file.
 
+## [1.1.8] - 2026-01-10
+
+### Fixed
+- **"Scan failed: Command failed" error on Windows** - Fixed critical bug where `process.execPath` returns VS Code's `Code.exe` instead of Node.js in the extension host environment. The scan command now correctly uses `node` from the system PATH. This reverts the problematic v1.1.6 fix that caused the regression.
+
 ## [1.1.7] - 2025-01-09
 
 ### Changed
